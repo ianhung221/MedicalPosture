@@ -1,0 +1,11 @@
+{
+  "name": "Posture Care 青少年智慧姿勢管理平台",
+  "short_name": "Posture Care",
+  "description": "整合 AI 影像辨識、IMU 姿態感測與健康管理的跨平台 PWA。",
+  "lang": "zh-Hant",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f4f7fb",
+  "theme_color": "#1769e0",
+  "icons": [{ "src": "./assets/icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
