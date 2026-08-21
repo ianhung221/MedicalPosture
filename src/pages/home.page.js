@@ -1,3 +1,5 @@
+import { getContextDetails, subscribeMonitoringSession } from '../state/monitoring-session.js';
+
 export function renderHomePage(container) {
   container.innerHTML = `
     <div class="page-stage home-page">
@@ -46,9 +48,9 @@ export function renderHomePage(container) {
             <div><span>行走安全</span><strong>目前安全</strong><small>規劃功能・Mock 狀態</small></div>
             <span class="status-dot" aria-hidden="true"></span>
           </article>
-          <article class="status-row status-row--brand">
+          <article class="status-row status-row--brand" data-home-monitoring-status>
             <span class="status-row__icon material-symbols-rounded" aria-hidden="true">sensors</span>
-            <div><span>目前偵測狀態</span><strong>目前未監測</strong><small>可前往偵測頁選擇示範模式</small></div>
+            <div><span>目前偵測狀態</span><strong data-home-monitoring-title>目前未監測</strong><small data-home-monitoring-copy>可前往偵測頁選擇示範模式</small></div>
             <a href="#/assessment" aria-label="前往偵測頁"><span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span></a>
           </article>
         </div>
@@ -103,4 +105,31 @@ export function renderHomePage(container) {
         </article>
       </section>
     </div>`;
+
+  return subscribeMonitoringSession((session) => {
+    const row = container.querySelector('[data-home-monitoring-status]');
+    if (!row) return;
+    const title = row.querySelector('[data-home-monitoring-title]');
+    const copy = row.querySelector('[data-home-monitoring-copy]');
+    const icon = row.querySelector('.status-row__icon');
+    row.classList.remove('status-row--healthy', 'status-row--warning', 'status-row--danger');
+
+    if (session.status === 'idle') {
+      title.textContent = '目前未監測';
+      copy.textContent = '可前往偵測頁選擇示範模式';
+      icon.textContent = 'sensors';
+      return;
+    }
+
+    const context = getContextDetails(session.context);
+    title.textContent = session.status === 'paused'
+      ? '偵測已暫停'
+      : session.activeMethod === 'ai' ? 'AI 坐姿偵測中' : session.activeMethod === 'imu' ? 'IMU 行走安全模式' : '智慧模式・目前不監測';
+    copy.textContent = `${context.label}・${context.recommendation}・Demo`;
+    icon.textContent = session.status === 'paused' ? 'pause_circle' : session.activeMethod === 'ai' ? 'videocam' : session.activeMethod === 'imu' ? 'sensors' : 'school';
+    if (session.status === 'paused') row.classList.add('status-row--warning');
+    else if (session.riskLevel === 'high-risk') row.classList.add('status-row--danger');
+    else if (session.riskLevel === 'attention') row.classList.add('status-row--warning');
+    else row.classList.add('status-row--healthy');
+  });
 }

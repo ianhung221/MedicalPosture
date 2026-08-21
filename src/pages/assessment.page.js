@@ -1,4 +1,6 @@
-export function renderAssessmentPage(container) {
+export { renderAssessmentPage } from './assessment-v3.page.js';
+
+function renderLegacyAssessmentPage(container) {
   const scenarios = {
     indoor: {
       context: '室內固定使用',

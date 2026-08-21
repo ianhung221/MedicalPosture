@@ -1,3 +1,5 @@
+import { getContextDetails, subscribeMonitoringSession } from '../state/monitoring-session.js';
+
 export function renderRecordsPage(container) {
   const records = [
     { date: '8 月 11 日', time: '19:42', mode: 'AI', context: '使用電腦', event: '持續低頭', duration: '18 秒', reminded: '是', category: 'ai', tone: 'warning' },
@@ -10,6 +12,7 @@ export function renderRecordsPage(container) {
   ];
 
   let activeFilter = 'all';
+  let currentSession = null;
 
   container.innerHTML = `
     <div class="page-stage records-page">
@@ -42,11 +45,25 @@ export function renderRecordsPage(container) {
 
   function modeClass(record) {
     if (record.category === 'safety') return 'mode-badge--danger';
+    if (record.category === 'neutral') return 'mode-badge--neutral';
     return record.mode === 'AI' ? 'mode-badge--ai' : 'mode-badge--imu';
   }
 
   function renderRecords() {
-    const visibleRecords = records.filter((record) => {
+    const context = currentSession ? getContextDetails(currentSession.context) : null;
+    const liveRecord = currentSession?.status !== 'idle' ? [{
+      date: '目前',
+      time: currentSession.status === 'paused' ? '已暫停' : '進行中',
+      mode: currentSession.activeMethod === 'ai' ? 'AI' : currentSession.activeMethod === 'imu' ? 'IMU' : '智慧',
+      context: context.label,
+      event: currentSession.status === 'paused' ? 'Demo 偵測暫停' : `${context.recommendation}示範`,
+      duration: '即時',
+      reminded: '否',
+      category: currentSession.activeMethod === 'none' ? 'neutral' : currentSession.activeMethod === 'ai' ? 'ai' : currentSession.riskLevel === 'high-risk' ? 'safety' : 'imu',
+      tone: currentSession.riskLevel === 'high-risk' ? 'danger' : currentSession.riskLevel === 'attention' ? 'warning' : 'healthy',
+    }] : [];
+    const recordsWithLiveSession = [...liveRecord, ...records];
+    const visibleRecords = recordsWithLiveSession.filter((record) => {
       if (activeFilter === 'all') return true;
       if (activeFilter === 'ai') return record.mode === 'AI';
       if (activeFilter === 'imu') return record.mode === 'IMU';
@@ -65,7 +82,7 @@ export function renderRecordsPage(container) {
       </article>`).join('');
   }
 
-  container.addEventListener('click', (event) => {
+  const onClick = (event) => {
     const button = event.target.closest('[data-record-filter]');
     if (!button) return;
 
@@ -76,7 +93,17 @@ export function renderRecordsPage(container) {
       option.setAttribute('aria-selected', String(active));
     });
     renderRecords();
+  };
+
+  container.addEventListener('click', onClick);
+
+  const unsubscribe = subscribeMonitoringSession((session) => {
+    currentSession = session;
+    renderRecords();
   });
 
-  renderRecords();
+  return () => {
+    unsubscribe();
+    container.removeEventListener('click', onClick);
+  };
 }

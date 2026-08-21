@@ -35,6 +35,10 @@
   --radius-small: 12px;
   --shadow: 0 10px 28px rgb(31 52 83 / 7%);
   --shadow-hover: 0 14px 34px rgb(31 52 83 / 11%);
+  --monitoring-ring: transparent;
+  --monitoring-glow: transparent;
+  --paused: #7c8798;
+  --paused-soft: #eef1f5;
   --content-width: 1120px;
   --space-1: .5rem;
   --space-2: 1rem;

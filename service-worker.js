@@ -1,10 +1,11 @@
-const CACHE_NAME = 'posture-health-shell-v4';
+const CACHE_NAME = 'posture-health-shell-v5';
 const APP_SHELL = [
   './', './index.html', './manifest.webmanifest', './src/app.js', './src/styles/main.css',
   './src/styles/tokens.css', './src/styles/reset.css', './src/styles/layout.css', './src/styles/components.css', './src/styles/pages.css',
-  './src/components/app-shell.js', './src/components/header.js', './src/components/bottom-nav.js',
-  './src/pages/home.page.js', './src/pages/statistics.page.js', './src/pages/assessment.page.js', './src/pages/records.page.js', './src/pages/profile.page.js',
-  './assets/icons/icon.svg'
+  './src/components/app-shell.js', './src/components/header.js', './src/components/bottom-nav.js', './src/components/monitoring-controls.js',
+  './src/state/monitoring-session.js',
+  './src/pages/home.page.js', './src/pages/statistics.page.js', './src/pages/assessment.page.js', './src/pages/assessment-v3.page.js', './src/pages/records.page.js', './src/pages/profile.page.js',
+  './assets/icons/icon.svg', './assets/images/ai-detection-demo.png', './assets/images/imu-detection-demo.png'
 ];
 
 self.addEventListener('install', (event) => {
