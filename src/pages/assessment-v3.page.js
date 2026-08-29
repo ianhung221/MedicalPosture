@@ -20,6 +20,12 @@ import {
   stopContextEngine,
   subscribeContext,
 } from '../context/context-engine.js';
+import {
+  assessmentRenderAction,
+  assessmentViewKey,
+  contextUiSignature,
+  createAssessmentCleanup,
+} from './assessment-render-policy.js';
 
 const modeLabels = { smart: '智慧模式', ai: 'AI 坐姿辨識', imu: 'IMU 姿態感測' };
 const activityLabels = { stationary: '固定使用', moving: '移動中', walking: '行走中', unknown: '尚未判定' };
@@ -35,6 +41,82 @@ function motionCapabilityCopy(motion) {
   if (motion.status === 'unavailable') return { label: '無有效動作感測資料', detail: '可改用攝影機或手動模式' };
   if (motion.permission === 'granted' || motion.receivingData === false) return { label: '正在建立觀察資料', detail: '收到足夠資料後判斷活動情境' };
   return { label: '尚未啟用', detail: '啟用後可判斷固定／移動／行走' };
+}
+
+function contextPresentation(contextSnapshot) {
+  const recommendation = contextSnapshot.recommendation || { decision: 'unknown', suggestedMode: null, reason: '正在準備情境資訊。', shouldAutoApply: false };
+  const tone = ['ai', 'imu'].includes(recommendation.decision) ? recommendation.decision : 'none';
+  const recommendationLabel = recommendationLabels[recommendation.decision] || recommendationLabels.unknown;
+  const activityLabel = activityLabels[contextSnapshot.activity.state] || activityLabels.unknown;
+  const motionCopy = motionCapabilityCopy(contextSnapshot.motion);
+  const candidateLabel = recommendation.suggestedMode ? recommendationLabels[recommendation.suggestedMode] : null;
+  const isProbing = contextSnapshot.status === 'probing';
+  const available = [contextSnapshot.camera.status === 'available' ? '攝影機' : '', contextSnapshot.motion.status === 'available' ? '動作感測' : ''].filter(Boolean).join('・') || '尚未確認';
+  const icon = recommendation.decision === 'ai' ? 'videocam' : recommendation.decision === 'imu' ? 'sensors' : recommendation.decision === 'pause' ? 'pause_circle' : 'help';
+  return { recommendation, tone, recommendationLabel, activityLabel, motionCopy, candidateLabel, isProbing, available, icon };
+}
+
+function candidateMarkup(view) {
+  if (view.recommendation.shouldAutoApply) return `<div class="context-candidate"><span><strong>情境資訊已準備完成</strong><small>按下開始後會直接套用「${view.recommendationLabel}」作為初始模式。</small></span><button class="button" type="button" data-action="start-smart">開始 ${view.recommendationLabel}</button></div>`;
+  if (view.candidateLabel) return `<div class="context-candidate"><span><strong>可確認的候選模式：${view.candidateLabel}</strong><small>目前資訊不足以自動套用，但可由你明確確認。</small></span><button class="button" type="button" data-action="confirm-suggestion">確認使用 ${view.candidateLabel}</button></div>`;
+  return '<p class="context-fallback-copy">若裝置不支援或權限遭拒，可展開下方手動模式；不會把未知狀態當成偵測成功。</p>';
+}
+
+function setText(container, selector, value) {
+  const element = container.querySelector(selector);
+  if (element && element.textContent !== value) element.textContent = value;
+}
+
+export function updateAssessmentContextUi(container, contextSnapshot) {
+  if (!container.querySelector('[data-context-overview]')) return false;
+  const view = contextPresentation(contextSnapshot);
+  const activityDetail = contextSnapshot.activity.stale ? '資料已暫停，等待重新觀察' : `信心：${contextSnapshot.activity.confidence}`;
+  const cameraLabel = capabilityLabels[contextSnapshot.camera.status] || capabilityLabels.unknown;
+
+  setText(container, '[data-context-current-icon]', view.isProbing ? 'sync' : 'sensors');
+  setText(container, '[data-context-current-status]', view.isProbing ? '正在檢查能力' : '尚未開始監測');
+  setText(container, '[data-context-activity-summary]', view.activityLabel);
+  setText(container, '[data-context-recommendation-summary]', view.recommendationLabel);
+  setText(container, '[data-context-source]', contextSnapshot.secureContext ? '本機即時狀態' : '需要 HTTPS');
+
+  const activityCard = container.querySelector('[data-context-signal="activity"]');
+  if (activityCard) activityCard.dataset.status = contextSnapshot.activity.state;
+  setText(container, '[data-context-activity-label]', view.activityLabel);
+  setText(container, '[data-context-activity-detail]', activityDetail);
+  const cameraCard = container.querySelector('[data-context-signal="camera"]');
+  if (cameraCard) cameraCard.dataset.status = contextSnapshot.camera.status;
+  setText(container, '[data-context-camera-label]', cameraLabel);
+  setText(container, '[data-context-camera-detail]', `權限：${contextSnapshot.camera.permission}`);
+  const motionCard = container.querySelector('[data-context-signal="motion"]');
+  if (motionCard) motionCard.dataset.status = contextSnapshot.motion.status;
+  setText(container, '[data-context-motion-label]', view.motionCopy.label);
+  setText(container, '[data-context-motion-detail]', view.motionCopy.detail);
+
+  const preflight = container.querySelector('[data-context-preflight]');
+  const result = container.querySelector('[data-context-result]');
+  if (preflight) preflight.dataset.tone = view.tone;
+  if (result) result.dataset.tone = view.tone;
+  setText(container, '[data-context-result-icon]', view.icon);
+  setText(container, '[data-context-result-activity]', view.activityLabel);
+  setText(container, '[data-context-result-available]', view.available);
+  setText(container, '[data-context-result-recommendation]', view.recommendationLabel);
+  setText(container, '[data-context-result-reason]', view.recommendation.reason);
+
+  container.querySelectorAll('[data-action="start-smart"]').forEach((button) => { button.disabled = view.isProbing; });
+  const motionButton = container.querySelector('[data-action="request-motion"]');
+  if (motionButton) {
+    motionButton.disabled = view.isProbing || contextSnapshot.motion.status === 'available';
+    setText(motionButton, '[data-context-motion-action-label]', contextSnapshot.motion.status === 'available' ? '動作感測已可用' : '啟用動作感測');
+  }
+  const cameraButton = container.querySelector('[data-action="request-camera"]');
+  if (cameraButton) {
+    cameraButton.disabled = view.isProbing || contextSnapshot.camera.status === 'available';
+    setText(cameraButton, '[data-context-camera-action-label]', contextSnapshot.camera.status === 'available' ? '攝影機已確認' : '檢查攝影機');
+  }
+  const candidateRegion = container.querySelector('[data-context-candidate-region]');
+  const nextCandidateMarkup = candidateMarkup(view);
+  if (candidateRegion && candidateRegion.innerHTML !== nextCandidateMarkup) candidateRegion.innerHTML = nextCandidateMarkup;
+  return true;
 }
 
 function showDemoToast(message) {
@@ -108,21 +190,15 @@ function summaryView(summary) {
 }
 
 function overviewView(contextSnapshot, manualOpen, setupOpen) {
-  const recommendation = contextSnapshot.recommendation || { decision: 'unknown', suggestedMode: null, reason: '正在準備情境資訊。', shouldAutoApply: false };
-  const tone = ['ai', 'imu'].includes(recommendation.decision) ? recommendation.decision : 'none';
-  const recommendationLabel = recommendationLabels[recommendation.decision] || recommendationLabels.unknown;
-  const activityLabel = activityLabels[contextSnapshot.activity.state] || activityLabels.unknown;
-  const motionCopy = motionCapabilityCopy(contextSnapshot.motion);
-  const candidateLabel = recommendation.suggestedMode ? recommendationLabels[recommendation.suggestedMode] : null;
-  const isProbing = contextSnapshot.status === 'probing';
-  return `<div class="page-stage detection-page">
+  const view = contextPresentation(contextSnapshot);
+  return `<div class="page-stage detection-page" data-context-overview>
     <section class="page-heading page-heading--split"><div><span class="product-kicker">情境辨識・智慧切換</span><h1>情境智慧偵測</h1><p>以瀏覽器可取得的裝置能力與活動訊號，保守建議適合的 Demo 偵測流程。</p></div><span class="demo-label"><span class="material-symbols-rounded" aria-hidden="true">verified_user</span>Phase 1 情境訊號</span></section>
-    <section class="current-detection-status" aria-label="目前狀態"><div><span class="current-detection-status__icon material-symbols-rounded">${isProbing ? 'sync' : 'sensors'}</span><span><small>目前狀態</small><strong>${isProbing ? '正在檢查能力' : '尚未開始監測'}</strong></span></div><dl><div><dt>目前活動</dt><dd>${activityLabel}</dd></div><div><dt>智慧建議</dt><dd>${recommendationLabel}</dd></div></dl><span class="context-source-tag">${contextSnapshot.secureContext ? '本機即時狀態' : '需要 HTTPS'}</span></section>
-    <section class="smart-mode-preflight card" data-tone="${tone}"><div class="smart-mode-preflight__hero"><span class="recommend-label">核心模式</span><span class="icon-tile"><span class="material-symbols-rounded">auto_awesome</span></span><div><span class="section-kicker">Context Engine・Phase 1</span><h2>智慧模式</h2><p>先確認能力與活動狀態，再選擇 AI／IMU Demo 或合理地暫停；資訊不足時不自行猜測。</p></div></div>
-      <div class="context-signal-grid" aria-label="目前情境訊號"><article data-status="${contextSnapshot.activity.state}"><span class="material-symbols-rounded">directions_walk</span><small>目前活動</small><strong>${activityLabel}</strong><p>${contextSnapshot.activity.stale ? '資料已暫停，等待重新觀察' : `信心：${contextSnapshot.activity.confidence}`}</p></article><article data-status="${contextSnapshot.camera.status}"><span class="material-symbols-rounded">videocam</span><small>攝影機</small><strong>${capabilityLabels[contextSnapshot.camera.status]}</strong><p>權限：${contextSnapshot.camera.permission}</p></article><article data-status="${contextSnapshot.motion.status}"><span class="material-symbols-rounded">screen_rotation</span><small>動作感測</small><strong>${motionCopy.label}</strong><p>${motionCopy.detail}</p></article></div>
-      <div class="smart-result" data-tone="${tone}"><span class="smart-result__icon material-symbols-rounded">${recommendation.decision === 'ai' ? 'videocam' : recommendation.decision === 'imu' ? 'sensors' : recommendation.decision === 'pause' ? 'pause_circle' : 'help'}</span><dl class="smart-result__facts"><div><dt>活動</dt><dd>${activityLabel}</dd></div><div><dt>可用能力</dt><dd>${[contextSnapshot.camera.status === 'available' ? '攝影機' : '', contextSnapshot.motion.status === 'available' ? '動作感測' : ''].filter(Boolean).join('・') || '尚未確認'}</dd></div><div><dt>系統建議</dt><dd>${recommendationLabel}</dd></div></dl><div class="recommendation-reason"><span class="material-symbols-rounded">lightbulb</span><div><strong>推薦原因</strong><p>${recommendation.reason}</p></div></div></div>
-      <div class="smart-mode-preflight__actions"><button class="button" type="button" data-action="start-smart" ${isProbing ? 'disabled' : ''}><span class="material-symbols-rounded">auto_awesome</span>開始智慧監測</button><button class="text-button" type="button" data-action="toggle-context-setup" aria-expanded="${setupOpen}"><span class="material-symbols-rounded">tune</span>${setupOpen ? '收合能力設定' : '檢查裝置能力'}</button></div>
-      ${setupOpen ? `<section class="context-permission-panel" aria-label="智慧模式初始化"><div class="context-permission-panel__intro"><span class="material-symbols-rounded">privacy_tip</span><div><strong>由你決定授權時機</strong><p>動作資料只在本機記憶體用於活動分類；攝影機只確認能力並立即關閉影像串流。不會請求 GPS 或 Bluetooth。</p></div></div><div class="context-permission-actions"><button class="button button--secondary" type="button" data-action="request-motion" ${isProbing || contextSnapshot.motion.status === 'available' ? 'disabled' : ''}><span class="material-symbols-rounded">screen_rotation</span>${contextSnapshot.motion.status === 'available' ? '動作感測已可用' : '啟用動作感測'}</button><button class="button button--secondary" type="button" data-action="request-camera" ${isProbing || contextSnapshot.camera.status === 'available' ? 'disabled' : ''}><span class="material-symbols-rounded">videocam</span>${contextSnapshot.camera.status === 'available' ? '攝影機已確認' : '檢查攝影機'}</button><button class="text-button" type="button" data-action="refresh-context"><span class="material-symbols-rounded">refresh</span>重新檢查</button></div>${recommendation.shouldAutoApply ? `<div class="context-candidate"><span><strong>情境資訊已準備完成</strong><small>按下開始後會直接套用「${recommendationLabel}」作為初始模式。</small></span><button class="button" type="button" data-action="start-smart">開始 ${recommendationLabel}</button></div>` : candidateLabel ? `<div class="context-candidate"><span><strong>可確認的候選模式：${candidateLabel}</strong><small>目前資訊不足以自動套用，但可由你明確確認。</small></span><button class="button" type="button" data-action="confirm-suggestion">確認使用 ${candidateLabel}</button></div>` : '<p class="context-fallback-copy">若裝置不支援或權限遭拒，可展開下方手動模式；不會把未知狀態當成偵測成功。</p>'}</section>` : ''}
+    <section class="current-detection-status" aria-label="目前狀態"><div><span class="current-detection-status__icon material-symbols-rounded" data-context-current-icon>${view.isProbing ? 'sync' : 'sensors'}</span><span><small>目前狀態</small><strong data-context-current-status>${view.isProbing ? '正在檢查能力' : '尚未開始監測'}</strong></span></div><dl><div><dt>目前活動</dt><dd data-context-activity-summary>${view.activityLabel}</dd></div><div><dt>智慧建議</dt><dd data-context-recommendation-summary>${view.recommendationLabel}</dd></div></dl><span class="context-source-tag" data-context-source>${contextSnapshot.secureContext ? '本機即時狀態' : '需要 HTTPS'}</span></section>
+    <section class="smart-mode-preflight card" data-context-preflight data-tone="${view.tone}"><div class="smart-mode-preflight__hero"><span class="recommend-label">核心模式</span><span class="icon-tile"><span class="material-symbols-rounded">auto_awesome</span></span><div><span class="section-kicker">Context Engine・Phase 1</span><h2>智慧模式</h2><p>先確認能力與活動狀態，再選擇 AI／IMU Demo 或合理地暫停；資訊不足時不自行猜測。</p></div></div>
+      <div class="context-signal-grid" aria-label="目前情境訊號"><article data-context-signal="activity" data-status="${contextSnapshot.activity.state}"><span class="material-symbols-rounded">directions_walk</span><small>目前活動</small><strong data-context-activity-label>${view.activityLabel}</strong><p data-context-activity-detail>${contextSnapshot.activity.stale ? '資料已暫停，等待重新觀察' : `信心：${contextSnapshot.activity.confidence}`}</p></article><article data-context-signal="camera" data-status="${contextSnapshot.camera.status}"><span class="material-symbols-rounded">videocam</span><small>攝影機</small><strong data-context-camera-label>${capabilityLabels[contextSnapshot.camera.status]}</strong><p data-context-camera-detail>權限：${contextSnapshot.camera.permission}</p></article><article data-context-signal="motion" data-status="${contextSnapshot.motion.status}"><span class="material-symbols-rounded">screen_rotation</span><small>動作感測</small><strong data-context-motion-label>${view.motionCopy.label}</strong><p data-context-motion-detail>${view.motionCopy.detail}</p></article></div>
+      <div class="smart-result" data-context-result data-tone="${view.tone}"><span class="smart-result__icon material-symbols-rounded" data-context-result-icon>${view.icon}</span><dl class="smart-result__facts"><div><dt>活動</dt><dd data-context-result-activity>${view.activityLabel}</dd></div><div><dt>可用能力</dt><dd data-context-result-available>${view.available}</dd></div><div><dt>系統建議</dt><dd data-context-result-recommendation>${view.recommendationLabel}</dd></div></dl><div class="recommendation-reason"><span class="material-symbols-rounded">lightbulb</span><div><strong>推薦原因</strong><p data-context-result-reason>${view.recommendation.reason}</p></div></div></div>
+      <div class="smart-mode-preflight__actions"><button class="button" type="button" data-action="start-smart" ${view.isProbing ? 'disabled' : ''}><span class="material-symbols-rounded">auto_awesome</span>開始智慧監測</button><button class="text-button" type="button" data-action="toggle-context-setup" aria-expanded="${setupOpen}"><span class="material-symbols-rounded">tune</span>${setupOpen ? '收合能力設定' : '檢查裝置能力'}</button></div>
+      ${setupOpen ? `<section class="context-permission-panel" aria-label="智慧模式初始化"><div class="context-permission-panel__intro"><span class="material-symbols-rounded">privacy_tip</span><div><strong>由你決定授權時機</strong><p>動作資料只在本機記憶體用於活動分類；攝影機只確認能力並立即關閉影像串流。不會請求 GPS 或 Bluetooth。</p></div></div><div class="context-permission-actions"><button class="button button--secondary" type="button" data-action="request-motion" ${view.isProbing || contextSnapshot.motion.status === 'available' ? 'disabled' : ''}><span class="material-symbols-rounded">screen_rotation</span><span data-context-motion-action-label>${contextSnapshot.motion.status === 'available' ? '動作感測已可用' : '啟用動作感測'}</span></button><button class="button button--secondary" type="button" data-action="request-camera" ${view.isProbing || contextSnapshot.camera.status === 'available' ? 'disabled' : ''}><span class="material-symbols-rounded">videocam</span><span data-context-camera-action-label>${contextSnapshot.camera.status === 'available' ? '攝影機已確認' : '檢查攝影機'}</span></button><button class="text-button" type="button" data-action="refresh-context"><span class="material-symbols-rounded">refresh</span>重新檢查</button></div><div data-context-candidate-region>${candidateMarkup(view)}</div></section>` : ''}
     </section>
     <section class="manual-mode-section" aria-labelledby="manual-mode-title"><div class="section-title-row"><div><span class="section-kicker">使用者保有選擇權</span><h2 id="manual-mode-title">手動模式</h2></div><button class="text-button" type="button" data-action="toggle-manual" aria-expanded="${manualOpen}">${manualOpen ? '收合' : '展開 AI／IMU 選項'}</button></div><div class="manual-mode-grid" ${manualOpen ? '' : 'hidden'}><article class="detection-method detection-method--ai"><span class="mode-state mode-state--complete">既有桌面原型已完成</span><span class="icon-tile icon-tile--ai"><span class="material-symbols-rounded">videocam</span></span><span class="section-kicker">MediaPipe Pose</span><h3>AI 坐姿辨識</h3><p>適合有可用攝影機的固定環境。本頁呈現未來整合方式，不代表 PWA 已串接 Python 原型。</p><button class="button button--ai" type="button" data-action="start-ai">開始 AI 示範</button></article><article class="detection-method detection-method--imu"><span class="mode-state mode-state--planned">規劃功能</span><span class="icon-tile icon-tile--imu"><span class="material-symbols-rounded">sensors</span></span><span class="section-kicker">頭部穿戴感測</span><h3>IMU 姿態感測</h3><p>適合無攝影機或移動情境；以耳機、帽夾及手機 IMU 作為未來研究方向。</p><button class="button button--imu" type="button" data-action="start-imu">開始 IMU 示範</button></article></div></section>
     <section class="walking-safety card"><div class="walking-safety__copy"><span class="mode-state mode-state--planned">未來功能</span><h2>行走安全</h2><p>未來可利用 IMU 判斷行走狀態與頭部姿態，於高風險的行走低頭情境提供安全提醒。</p></div><div class="safety-flow"><div><span class="material-symbols-rounded">directions_walk</span><strong>行走狀態</strong></div><span class="material-symbols-rounded safety-flow__arrow">arrow_forward</span><div><span class="material-symbols-rounded">phone_android</span><strong>持續低頭</strong></div><span class="material-symbols-rounded safety-flow__arrow">arrow_forward</span><div><span class="material-symbols-rounded">notification_important</span><strong>安全提醒</strong></div></div></section>
@@ -134,13 +210,17 @@ export function renderAssessmentPage(container) {
   let setupOpen = false;
   let currentSession = null;
   let currentContext = null;
-  const render = () => {
+  let renderedViewKey = null;
+  let renderedContextSignature = 'no-context';
+  const renderFull = () => {
     if (!currentSession || !currentContext) return;
     container.innerHTML = currentSession.status !== 'idle'
       ? activeView(currentSession)
       : currentSession.lastSummary
         ? summaryView(currentSession.lastSummary)
         : overviewView(currentContext, manualOpen, setupOpen);
+    renderedViewKey = assessmentViewKey(currentSession, { manualOpen, setupOpen });
+    renderedContextSignature = contextUiSignature(currentContext);
   };
 
   const startSmartSession = (recommendation) => {
@@ -159,7 +239,7 @@ export function renderAssessmentPage(container) {
       return;
     }
     setupOpen = true;
-    render();
+    renderFull();
     showDemoToast('目前資訊不足，請確認權限或手動選擇模式');
   };
 
@@ -167,8 +247,8 @@ export function renderAssessmentPage(container) {
     const trigger = event.target.closest('[data-action]');
     if (!trigger) return;
     const action = trigger.dataset.action;
-    if (action === 'toggle-context-setup') { setupOpen = !setupOpen; render(); }
-    if (action === 'toggle-manual') { manualOpen = !manualOpen; render(); }
+    if (action === 'toggle-context-setup') { setupOpen = !setupOpen; renderFull(); }
+    if (action === 'toggle-manual') { manualOpen = !manualOpen; renderFull(); }
     if (action === 'start-smart') tryStartSmart();
     if (action === 'refresh-context') await initializeContextEngine({ force: true });
     if (action === 'request-motion') {
@@ -195,20 +275,30 @@ export function renderAssessmentPage(container) {
   const unsubscribeSession = subscribeMonitoringSession((session) => {
     currentSession = session;
     setContextEvaluationPhase(session.status !== 'idle' && session.mode === 'smart' ? 'active-monitoring' : 'initial-start');
-    render();
+    if (!currentContext) return;
+    const nextViewKey = assessmentViewKey(currentSession, { manualOpen, setupOpen });
+    if (nextViewKey !== renderedViewKey) renderFull();
   });
   const unsubscribeContext = subscribeContext((contextSnapshot) => {
+    const previousContextSignature = renderedContextSignature;
     currentContext = contextSnapshot;
     if (currentSession?.status !== 'idle' && currentSession.mode === 'smart') {
       const sessionContext = buildSessionContext(contextSnapshot, contextSnapshot.recommendation);
       syncMonitoringRecommendation(contextSnapshot.recommendation, { context: sessionContext.context, contextDetails: sessionContext.details });
     }
-    render();
+    const nextViewKey = assessmentViewKey(currentSession, { manualOpen, setupOpen });
+    const nextContextSignature = contextUiSignature(contextSnapshot);
+    const action = assessmentRenderAction({ renderedViewKey, nextViewKey, previousContextSignature, nextContextSignature });
+    if (action === 'full') renderFull();
+    if (action === 'incremental') {
+      updateAssessmentContextUi(container, contextSnapshot);
+      renderedContextSignature = nextContextSignature;
+    }
   });
   initializeContextEngine();
-  return () => {
-    unsubscribeSession();
-    unsubscribeContext();
-    container.removeEventListener('click', onClick);
-  };
+  return createAssessmentCleanup(
+    unsubscribeSession,
+    unsubscribeContext,
+    () => container.removeEventListener('click', onClick),
+  );
 }

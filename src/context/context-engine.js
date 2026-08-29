@@ -57,7 +57,7 @@ export function createContextEngine({ environment = {}, now = Date.now, capabili
   };
   const onMotionSample = (sample) => {
     const activity = activityDetector.push(sample);
-    const activityKey = `${activity.state}|${activity.confidence}|${Math.floor(activity.observedForMs / 1000)}|${Boolean(activity.stale)}`;
+    const activityKey = `${activity.state}|${activity.confidence}|${Boolean(activity.stale)}`;
     if (activityKey === lastActivityKey) return;
     lastActivityKey = activityKey;
     update({ activity, motion: { ...snapshot.motion, status: 'available', permission: 'granted', receivingData: true, sampleAgeMs: 0 }, status: 'ready' });
