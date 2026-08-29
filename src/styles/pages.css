@@ -1047,6 +1047,55 @@
   .smart-live-panel { transition-duration: .01ms; }
 }
 
+/* Phase 1 context awareness */
+.context-source-tag { justify-self: end; padding: .35rem .6rem; border-radius: 999px; color: var(--brand-dark); background: var(--brand-soft); font-size: .62rem; font-weight: 750; }
+.context-signal-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: .7rem; margin-top: 1rem; }
+.context-signal-grid article { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: .15rem .55rem; min-width: 0; padding: .85rem; border: 1px solid var(--border); border-radius: 13px; background: var(--surface-subtle); }
+.context-signal-grid .material-symbols-rounded { grid-row: 1 / 4; color: var(--brand); font-size: 1.35rem; }
+.context-signal-grid small { color: var(--muted); font-size: .58rem; }
+.context-signal-grid strong { font-size: .76rem; }
+.context-signal-grid p { margin: 0; color: var(--muted); font-size: .6rem; line-height: 1.45; }
+.context-signal-grid article[data-status="available"] { border-color: var(--green-border); background: var(--green-soft); }
+.context-signal-grid article[data-status="available"] .material-symbols-rounded { color: var(--green); }
+.context-signal-grid article[data-status="permission-required"] { border-color: var(--orange-border); background: var(--orange-soft); }
+.context-signal-grid article[data-status="permission-required"] .material-symbols-rounded { color: var(--orange); }
+.context-signal-grid article[data-status="denied"],
+.context-signal-grid article[data-status="unavailable"] { border-color: #e1e5eb; background: #f5f6f8; }
+.context-permission-panel { margin-top: 1rem; padding: 1rem; border: 1px solid var(--brand-border); border-radius: 14px; background: #f8fbff; }
+.context-permission-panel__intro { display: flex; align-items: flex-start; gap: .7rem; }
+.context-permission-panel__intro > .material-symbols-rounded { color: var(--brand); }
+.context-permission-panel__intro strong { font-size: .78rem; }
+.context-permission-panel__intro p { margin: .2rem 0 0; color: var(--muted); font-size: .68rem; line-height: 1.55; }
+.context-permission-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .55rem; margin-top: .85rem; }
+.context-permission-actions .button { min-height: 40px; padding: .55rem .75rem; font-size: .68rem; }
+.context-permission-actions .material-symbols-rounded { font-size: 1rem; }
+.context-candidate { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: .8rem; padding: .75rem; border: 1px solid var(--ai-border); border-radius: 12px; background: var(--ai-soft); }
+.context-candidate span { display: grid; gap: .15rem; }
+.context-candidate strong { font-size: .72rem; }
+.context-candidate small, .context-fallback-copy { color: var(--muted); font-size: .62rem; line-height: 1.5; }
+.context-fallback-copy { margin: .8rem 0 0; }
+.context-switch-suggestion { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: .8rem; margin: 1rem 0; padding: .9rem 1rem; border: 1px solid var(--orange-border); border-left: 4px solid var(--orange); border-radius: 13px; background: var(--orange-soft); }
+.context-switch-suggestion > .material-symbols-rounded { color: var(--orange); }
+.context-switch-suggestion h2 { margin: .12rem 0; font-size: .86rem; }
+.context-switch-suggestion p { margin: 0; color: var(--ink-soft); font-size: .65rem; }
+.context-switch-suggestion__actions { display: flex; align-items: center; gap: .45rem; }
+.context-switch-suggestion__actions .button { min-height: 38px; padding: .5rem .7rem; font-size: .65rem; }
+
+@media (max-width: 760px) {
+  .context-signal-grid { grid-template-columns: 1fr; }
+  .context-switch-suggestion { grid-template-columns: auto 1fr; }
+  .context-switch-suggestion__actions { grid-column: 1 / -1; justify-content: flex-end; }
+}
+
+@media (max-width: 520px) {
+  .context-source-tag { justify-self: start; }
+  .context-permission-actions { display: grid; grid-template-columns: 1fr; }
+  .context-permission-actions .button, .context-permission-actions .text-button { width: 100%; justify-content: center; }
+  .context-candidate { align-items: stretch; flex-direction: column; }
+  .context-switch-suggestion__actions { align-items: stretch; flex-direction: column; }
+  .context-switch-suggestion__actions .button, .context-switch-suggestion__actions .text-button { width: 100%; justify-content: center; }
+}
+
 /* Monitoring session v3 */
 .status-row--warning { border-color: var(--orange-border); background: var(--orange-soft); }
 .status-row--warning .status-row__icon { color: var(--orange-dark); background: #fff; }

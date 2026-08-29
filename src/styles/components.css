@@ -180,6 +180,20 @@ select:focus-visible {
   .button, .interactive-card, .toast { transition-duration: .01ms; }
 }
 
+.monitoring-panel__suggestion { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: .45rem; margin-top: .7rem; padding: .65rem; border: 1px solid var(--orange-border); border-radius: 11px; background: var(--orange-soft); }
+.monitoring-panel__suggestion[hidden] { display: none; }
+.monitoring-panel__suggestion > .material-symbols-rounded { color: var(--orange); font-size: 1.1rem; }
+.monitoring-panel__suggestion > div { display: grid; gap: .12rem; }
+.monitoring-panel__suggestion strong { font-size: .65rem; }
+.monitoring-panel__suggestion small { color: var(--ink-soft); font-size: .56rem; line-height: 1.4; }
+.monitoring-panel__suggestion .button { min-height: 34px; padding: .4rem .55rem; font-size: .58rem; }
+.monitoring-panel__suggestion .text-button { grid-column: 2 / -1; justify-self: end; font-size: .56rem; }
+
+@media (max-width: 430px) {
+  .monitoring-panel__suggestion { grid-template-columns: auto 1fr; }
+  .monitoring-panel__suggestion .button, .monitoring-panel__suggestion .text-button { grid-column: 1 / -1; width: 100%; justify-content: center; }
+}
+
 /* Global monitoring controls */
 .monitoring-chrome[hidden],
 .monitoring-panel[hidden],

@@ -33,6 +33,21 @@ const CONTEXTS = {
     riskLevel: 'normal',
     reason: '未偵測到合適裝置，且此情境以專心學習為優先；不監測是正常狀態。',
   },
+  'detected-stationary': {
+    label: '固定使用', device: '瀏覽器能力檢查', recommendation: '智慧模式建議', method: 'none', riskLevel: 'normal', reason: '依 Phase 1 情境訊號形成的建議。',
+  },
+  'detected-walking': {
+    label: '行走', device: '手機動作感測', recommendation: 'IMU 姿態感測（Demo）', method: 'imu', riskLevel: 'normal', reason: 'DeviceMotion 只用於行走情境判斷；頭部姿態仍為 Mock。',
+  },
+  'detected-moving': {
+    label: '移動', device: '手機動作感測', recommendation: 'IMU 姿態感測（Demo）', method: 'imu', riskLevel: 'normal', reason: 'DeviceMotion 只用於移動情境判斷；頭部姿態仍為 Mock。',
+  },
+  'detected-unknown': {
+    label: '活動尚未判定', device: '能力尚未確認', recommendation: '需要使用者選擇', method: 'none', riskLevel: 'normal', reason: '目前資訊不足，不進行自動推論。',
+  },
+  'context-hidden': {
+    label: '頁面不可見', device: '情境取樣已暫停', recommendation: '建議暫停', method: 'none', riskLevel: 'normal', reason: '頁面不可見時不持續取樣，且不會結束既有工作階段。',
+  },
 };
 
 const initialState = () => ({
@@ -42,13 +57,25 @@ const initialState = () => ({
   context: 'fixed-indoor',
   activeMethod: 'none',
   startedAt: null,
+  contextDetails: null,
+  recommendation: null,
+  pendingRecommendation: null,
+  ignoredRecommendationKey: null,
   lastSummary: null,
 });
 
 let state = initialState();
 
 function snapshot() {
-  return { ...state, lastSummary: state.lastSummary ? { ...state.lastSummary } : null };
+  return {
+    ...state,
+    contextDetails: state.contextDetails ? { ...state.contextDetails } : null,
+    recommendation: state.recommendation ? { ...state.recommendation, requirements: [...(state.recommendation.requirements || [])] } : null,
+    pendingRecommendation: state.pendingRecommendation
+      ? { ...state.pendingRecommendation, recommendation: { ...state.pendingRecommendation.recommendation, requirements: [...(state.pendingRecommendation.recommendation.requirements || [])] }, details: { ...state.pendingRecommendation.details } }
+      : null,
+    lastSummary: state.lastSummary ? { ...state.lastSummary, contextDetails: state.lastSummary.contextDetails ? { ...state.lastSummary.contextDetails } : null } : null,
+  };
 }
 
 function emit() {
@@ -65,8 +92,9 @@ export function getMonitoringSession() {
   return snapshot();
 }
 
-export function getContextDetails(context = state.context) {
-  return { ...(CONTEXTS[context] || CONTEXTS['fixed-indoor']) };
+export function getContextDetails(context = state.context, override = null) {
+  const activeDetails = !override && context === state.context ? state.contextDetails : null;
+  return { ...(override || activeDetails || CONTEXTS[context] || CONTEXTS['fixed-indoor']) };
 }
 
 export function subscribeMonitoringSession(listener) {
@@ -75,31 +103,95 @@ export function subscribeMonitoringSession(listener) {
   return () => listeners.delete(listener);
 }
 
-export function startMonitoring({ mode, context = 'fixed-indoor' }) {
+export function startMonitoring({ mode, context = 'fixed-indoor', recommendation = null, contextDetails = null }) {
   assertOneOf(mode, ['smart', 'ai', 'imu'], 'mode');
   assertOneOf(context, Object.keys(CONTEXTS), 'context');
 
   let activeMethod = mode;
   let riskLevel = mode === 'imu' ? 'attention' : 'normal';
+  let status = 'monitoring';
   if (mode === 'smart') {
-    const contextDetails = getContextDetails(context);
-    activeMethod = contextDetails.method;
-    riskLevel = contextDetails.riskLevel;
+    if (!recommendation || !['ai', 'imu', 'pause'].includes(recommendation.decision)) {
+      throw new TypeError('智慧模式需要已解析的 AI／IMU／PAUSE recommendation');
+    }
+    activeMethod = recommendation.decision === 'pause' ? 'none' : recommendation.decision;
+    status = recommendation.decision === 'pause' ? 'paused' : 'monitoring';
+    riskLevel = 'normal';
   } else if (mode === 'ai') {
     context = 'fixed-indoor';
+    contextDetails = null;
   } else {
     context = context === 'fixed-indoor' ? 'commute-walking' : context;
+    contextDetails = null;
   }
 
   state = {
-    status: 'monitoring',
+    status,
     mode,
     riskLevel,
     context,
     activeMethod,
     startedAt: Date.now(),
+    contextDetails: contextDetails ? { ...contextDetails } : null,
+    recommendation: recommendation ? { ...recommendation, requirements: [...(recommendation.requirements || [])] } : null,
+    pendingRecommendation: null,
+    ignoredRecommendationKey: null,
     lastSummary: null,
   };
+  return emit();
+}
+
+export function syncMonitoringRecommendation(recommendation, { context, contextDetails } = {}) {
+  if (state.status === 'idle' || state.mode !== 'smart' || !recommendation) return snapshot();
+  const recommendationKey = `${recommendation.decision}|${recommendation.reasonCode}`;
+  if (state.ignoredRecommendationKey && state.ignoredRecommendationKey !== recommendationKey) {
+    state = { ...state, ignoredRecommendationKey: null };
+  }
+  if (state.ignoredRecommendationKey === recommendationKey) return snapshot();
+  const isCurrentMethod = ['ai', 'imu'].includes(recommendation.decision) && recommendation.decision === state.activeMethod;
+  const isCurrentPause = recommendation.decision === 'pause' && state.status === 'paused';
+  if (isCurrentMethod || isCurrentPause || ['require-user-choice', 'unknown'].includes(recommendation.decision)) {
+    if (!state.pendingRecommendation) return snapshot();
+    state = { ...state, pendingRecommendation: null };
+    return emit();
+  }
+  if (!['ai', 'imu', 'pause'].includes(recommendation.decision)) return snapshot();
+  const samePending = state.pendingRecommendation?.recommendation?.decision === recommendation.decision
+    && state.pendingRecommendation?.recommendation?.reasonCode === recommendation.reasonCode;
+  if (samePending) return snapshot();
+  state = {
+    ...state,
+    pendingRecommendation: {
+      recommendation: { ...recommendation, shouldAutoApply: false, requirements: [...(recommendation.requirements || [])] },
+      context: context || state.context,
+      details: { ...(contextDetails || getContextDetails(context || state.context)) },
+    },
+  };
+  return emit();
+}
+
+export function applyPendingMonitoringRecommendation() {
+  if (!state.pendingRecommendation || state.status === 'idle' || state.mode !== 'smart') return snapshot();
+  const { recommendation, context, details } = state.pendingRecommendation;
+  const decision = recommendation.decision;
+  state = {
+    ...state,
+    status: decision === 'pause' ? 'paused' : state.status === 'paused' ? 'paused' : 'monitoring',
+    activeMethod: decision === 'pause' ? 'none' : decision,
+    riskLevel: 'normal',
+    context,
+    contextDetails: { ...details },
+    recommendation: { ...recommendation, shouldAutoApply: false, requirements: [...(recommendation.requirements || [])] },
+    pendingRecommendation: null,
+    ignoredRecommendationKey: null,
+  };
+  return emit();
+}
+
+export function dismissPendingMonitoringRecommendation() {
+  if (!state.pendingRecommendation) return snapshot();
+  const ignoredRecommendationKey = `${state.pendingRecommendation.recommendation.decision}|${state.pendingRecommendation.recommendation.reasonCode}`;
+  state = { ...state, pendingRecommendation: null, ignoredRecommendationKey };
   return emit();
 }
 
@@ -130,6 +222,7 @@ export function endMonitoring() {
     mode: completed.mode,
     activeMethod: completed.activeMethod,
     context: completed.context,
+    contextDetails: completed.contextDetails,
     duration: `${durationMinutes} 分鐘`,
     goodPosture: completed.activeMethod === 'ai' ? '82%' : '—',
     lookingDown: completed.activeMethod === 'ai' ? '3 次' : '—',
@@ -142,7 +235,7 @@ export function endMonitoring() {
         : '本次情境維持不監測，符合以學習優先且不過度干擾的設計原則。',
   };
 
-  state = { ...initialState(), context: completed.context, lastSummary };
+  state = { ...initialState(), context: completed.context, contextDetails: completed.contextDetails, lastSummary };
   return emit();
 }
 

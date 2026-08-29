@@ -1,10 +1,19 @@
 import {
+  applyPendingMonitoringRecommendation,
+  dismissPendingMonitoringRecommendation,
   endMonitoring,
   getContextDetails,
   pauseMonitoring,
   resumeMonitoring,
   subscribeMonitoringSession,
+  syncMonitoringRecommendation,
 } from '../state/monitoring-session.js';
+import {
+  buildSessionContext,
+  setContextEvaluationPhase,
+  stopContextEngine,
+  subscribeContext,
+} from '../context/context-engine.js';
 
 const modeLabels = { smart: '智慧模式', ai: 'AI 坐姿辨識', imu: 'IMU 姿態感測' };
 const methodLabels = { ai: 'AI', imu: 'IMU', none: '不監測' };
@@ -36,6 +45,12 @@ export function monitoringControlsMarkup() {
           <div><dt>目前方式</dt><dd data-panel-method>AI</dd></div>
           <div><dt>安全狀態</dt><dd data-panel-risk>目前正常</dd></div>
         </dl>
+        <div class="monitoring-panel__suggestion" data-monitoring-suggestion hidden>
+          <span class="material-symbols-rounded" aria-hidden="true">swap_horiz</span>
+          <div><strong data-suggestion-title>建議切換偵測方式</strong><small data-suggestion-reason></small></div>
+          <button class="button" type="button" data-monitoring-action="apply-suggestion">確認</button>
+          <button class="text-button" type="button" data-monitoring-action="dismiss-suggestion">維持目前模式</button>
+        </div>
         <p class="monitoring-panel__truth"><span class="material-symbols-rounded" aria-hidden="true">science</span>Demo／Mock 操作流程，未連接真實感測器。</p>
         <div class="monitoring-panel__actions">
           <button class="button button--secondary" type="button" data-monitoring-action="toggle-pause"><span class="material-symbols-rounded" aria-hidden="true" data-panel-pause-icon>pause</span><span data-panel-pause-label>暫停</span></button>
@@ -63,6 +78,7 @@ export function mountMonitoringControls(app) {
 
   const panel = chrome.querySelector('[data-monitoring-panel]');
   const confirm = chrome.querySelector('[data-monitoring-confirm]');
+  const suggestion = chrome.querySelector('[data-monitoring-suggestion]');
   let currentSession = null;
   let lastRisk = null;
   let riskTimer = null;
@@ -78,7 +94,7 @@ export function mountMonitoringControls(app) {
     currentSession = session;
     const isActive = session.status !== 'idle';
     const paused = session.status === 'paused';
-    const context = getContextDetails(session.context);
+    const context = getContextDetails(session.context, session.contextDetails);
     app.dataset.monitoringStatus = session.status;
     app.dataset.riskLevel = isActive ? session.riskLevel : 'idle';
     chrome.hidden = !isActive;
@@ -101,6 +117,12 @@ export function mountMonitoringControls(app) {
     chrome.querySelector('[data-panel-pause-icon]').textContent = paused ? 'play_arrow' : 'pause';
     chrome.querySelector('[data-panel-pause-label]').textContent = paused ? '繼續' : '暫停';
     chrome.querySelector('[data-monitoring-action="toggle-pause"]').setAttribute('aria-label', paused ? '繼續偵測' : '暫停偵測');
+    suggestion.hidden = !session.pendingRecommendation;
+    if (session.pendingRecommendation) {
+      const decisionLabels = { ai: 'AI 姿勢辨識', imu: 'IMU 姿態感測', pause: '暫停監測' };
+      suggestion.querySelector('[data-suggestion-title]').textContent = `建議切換為 ${decisionLabels[session.pendingRecommendation.recommendation.decision]}`;
+      suggestion.querySelector('[data-suggestion-reason]').textContent = session.pendingRecommendation.recommendation.reason;
+    }
 
     if (lastRisk && lastRisk !== session.riskLevel && session.riskLevel !== 'normal') {
       app.classList.remove('is-risk-pulse');
@@ -119,10 +141,13 @@ export function mountMonitoringControls(app) {
     if (action === 'toggle-pause') currentSession.status === 'paused' ? resumeMonitoring() : pauseMonitoring();
     if (action === 'request-end') confirm.hidden = false;
     if (action === 'cancel-end') confirm.hidden = true;
+    if (action === 'apply-suggestion') applyPendingMonitoringRecommendation();
+    if (action === 'dismiss-suggestion') dismissPendingMonitoringRecommendation();
     if (action === 'confirm-end') {
       confirm.hidden = true;
       setPanelOpen(false);
       endMonitoring();
+      stopContextEngine();
       window.location.hash = '#/assessment';
     }
   };
@@ -167,10 +192,19 @@ export function mountMonitoringControls(app) {
 
   chrome.addEventListener('click', onClick);
   chrome.querySelector('[data-drag-handle]').addEventListener('pointerdown', startDragging);
-  const unsubscribe = subscribeMonitoringSession(update);
+  const unsubscribe = subscribeMonitoringSession((session) => {
+    update(session);
+    setContextEvaluationPhase(session.status !== 'idle' && session.mode === 'smart' ? 'active-monitoring' : 'initial-start');
+  });
+  const unsubscribeContext = subscribeContext((contextSnapshot) => {
+    if (!currentSession || currentSession.status === 'idle' || currentSession.mode !== 'smart') return;
+    const sessionContext = buildSessionContext(contextSnapshot, contextSnapshot.recommendation);
+    syncMonitoringRecommendation(contextSnapshot.recommendation, { context: sessionContext.context, contextDetails: sessionContext.details });
+  });
 
   return () => {
     unsubscribe();
+    unsubscribeContext();
     chrome.removeEventListener('click', onClick);
     chrome.querySelector('[data-drag-handle]')?.removeEventListener('pointerdown', startDragging);
     stopDragging();
