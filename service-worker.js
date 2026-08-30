@@ -1,4 +1,4 @@
-const CACHE_NAME = 'posture-health-shell-v10';
+const CACHE_NAME = 'posture-health-shell-v11';
 const CACHE_PREFIX = 'posture-health-shell-';
 const AI_CACHE_NAME = 'posture-ai-assets-v1';
 const AI_CACHE_PREFIX = 'posture-ai-assets-';
@@ -10,6 +10,8 @@ const APP_SHELL = [
   './src/services/firebase.service.js', './src/services/imu.service.js', './src/services/pose.service.js', './src/utils/dom.js',
   './src/state/monitoring-session.js', './src/state/platform-settings.js',
   './src/context/capability-detector.js', './src/context/motion-sampler.js', './src/context/activity-detector.js', './src/context/smart-mode-rules.js', './src/context/context-engine.js',
+  './src/sensors/sensor-permission.js',
+  './src/imu/imu-config.js', './src/imu/imu-debug-config.js', './src/imu/imu-sensor-source.js', './src/imu/orientation-normalizer.js', './src/imu/orientation-smoother.js', './src/imu/imu-calibration.js', './src/imu/imu-visual-mapper.js', './src/imu/imu-monitoring-engine.js',
   './src/ai/mediapipe-config.js', './src/ai/camera-controller.js', './src/ai/pose-runtime.js', './src/ai/landmark-smoother.js', './src/ai/posture-features.js', './src/ai/posture-calibration.js', './src/ai/posture-classifier.js', './src/ai/posture-stabilizer.js', './src/ai/posture-event-tracker.js', './src/ai/pose-pipeline.js', './src/ai/pose-overlay.js', './src/ai/performance-meter.js', './src/ai/ai-debug-config.js', './src/ai/background-ai-diagnostics.js', './src/ai/ai-monitoring-engine.js',
   './assets/vendor/mediapipe/vision_bundle.mjs',
   './src/pages/home.page.js', './src/pages/statistics.page.js', './src/pages/assessment.page.js', './src/pages/assessment-v3.page.js', './src/pages/assessment-render-policy.js', './src/pages/records.page.js', './src/pages/profile.page.js',

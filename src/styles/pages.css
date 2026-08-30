@@ -1197,6 +1197,38 @@
 .detection-visual__frame { position: relative; display: grid; place-items: center; overflow: hidden; background: #f8fafc; }
 .detection-visual--ai .detection-visual__frame { aspect-ratio: 842 / 746; }
 .detection-visual--imu .detection-visual__frame { aspect-ratio: 1586 / 990; }
+.imu-head-stage { min-height: 390px; perspective: 900px; background: radial-gradient(circle at 50% 40%, #fff 0, #f6f4ff 48%, #ece9f9 100%); }
+.imu-head-scene { position: relative; display: grid; place-items: center; width: min(88%, 560px); height: 330px; transform-style: preserve-3d; }
+.imu-head-model { --imu-pitch: 0deg; --imu-roll: 0deg; --imu-yaw: 0deg; position: relative; width: 155px; height: 210px; transform: rotateX(var(--imu-pitch)) rotateY(var(--imu-yaw)) rotateZ(var(--imu-roll)); transform-style: preserve-3d; transition: transform .09s linear; }
+.imu-head-model__face { position: absolute; inset: 0 14px 35px; border: 1px solid rgb(85 64 173 / 24%); border-radius: 49% 49% 44% 44%; background: linear-gradient(135deg, #fff 8%, #e7e3f5 68%, #d4cee9); box-shadow: inset -18px -10px 28px rgb(85 64 173 / 10%), 0 22px 40px rgb(65 54 113 / 15%); transform: translateZ(18px); }
+.imu-head-model__face::before { content: ''; position: absolute; left: 32px; right: 32px; top: 83px; height: 2px; border-radius: 50%; background: rgb(85 64 173 / 18%); box-shadow: 0 38px 0 rgb(85 64 173 / 12%); }
+.imu-head-model__ear { position: absolute; top: 76px; width: 22px; height: 43px; border: 1px solid rgb(85 64 173 / 20%); border-radius: 50%; background: #e7e3f3; transform: translateZ(5px); }
+.imu-head-model__ear--left { left: 3px; }
+.imu-head-model__ear--right { right: 3px; }
+.imu-head-model__nose { position: absolute; left: 70px; top: 82px; width: 15px; height: 31px; border-right: 2px solid rgb(85 64 173 / 20%); border-bottom: 2px solid rgb(85 64 173 / 16%); border-radius: 0 0 9px; transform: translateZ(35px); }
+.imu-head-model__neck { position: absolute; left: 49px; bottom: 0; width: 58px; height: 58px; border-radius: 8px 8px 24px 24px; background: linear-gradient(90deg, #ddd8ed, #f5f3fb 50%, #d6d0e7); transform: translateZ(0); }
+.imu-axis { position: absolute; padding: .28rem .5rem; border: 1px solid var(--imu-border); border-radius: 999px; color: var(--imu-dark); background: rgb(255 255 255 / 84%); font-size: .59rem; font-weight: 800; }
+.imu-axis--pitch { left: 3%; top: 42%; }
+.imu-axis--roll { left: 50%; bottom: 4%; transform: translateX(-50%); }
+.imu-axis--yaw { right: 3%; top: 42%; }
+.imu-runtime-prompt { position: absolute; inset: 0; z-index: 3; display: grid; place-content: center; justify-items: center; gap: .45rem; padding: 1rem; color: var(--ink); background: rgb(249 248 253 / 88%); text-align: center; backdrop-filter: blur(5px); }
+.imu-runtime-prompt[hidden] { display: none; }
+.imu-runtime-prompt > .material-symbols-rounded { color: var(--imu); font-size: 2.4rem; }
+.imu-runtime-prompt strong { font-size: .92rem; }
+.imu-runtime-prompt p { max-width: 390px; margin: 0 0 .3rem; color: var(--ink-soft); font-size: .68rem; line-height: 1.55; }
+.imu-calibration { margin: 1rem 0; padding: .8rem; border: 1px solid var(--imu-border); border-radius: 12px; background: var(--imu-soft); }
+.imu-calibration[hidden] { display: none; }
+.imu-calibration > div { display: flex; justify-content: space-between; gap: .7rem; color: var(--imu-dark); font-size: .68rem; }
+.imu-calibration progress { width: 100%; height: 8px; margin: .55rem 0 .25rem; accent-color: var(--imu); }
+.imu-calibration p { margin: 0; color: var(--ink-soft); font-size: .59rem; line-height: 1.5; }
+.imu-orientation-now { display: flex; align-items: center; gap: .75rem; margin: 1rem 0; padding: .8rem; border: 1px solid var(--imu-border); border-radius: 12px; color: var(--imu-dark); background: var(--imu-soft); }
+.imu-orientation-now > .material-symbols-rounded { font-size: 1.8rem; }
+.imu-orientation-now > div { display: grid; }
+.imu-orientation-now small { font-size: .62rem; }
+.imu-orientation-now strong { font-size: .88rem; }
+.imu-orientation-now p { margin: .1rem 0 0; color: var(--ink-soft); font-size: .59rem; }
+.imu-error { padding: .65rem; border: 1px solid var(--orange-border); border-radius: 10px; color: var(--orange-dark); background: var(--orange-soft); font-size: .62rem; line-height: 1.5; }
+.imu-error[hidden] { display: none; }
 .detection-visual__frame img { display: block; width: 100%; height: 100%; object-fit: contain; object-position: center; transition: filter .2s ease, opacity .2s ease; }
 .detection-visual figcaption { padding: .65rem .85rem; border-top: 1px solid var(--border); color: var(--muted); font-size: .6rem; line-height: 1.5; }
 .detection-visual__paused { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: .15rem; color: #fff; background: rgb(20 31 50 / 48%); opacity: 0; pointer-events: none; transition: opacity .2s ease; }
@@ -1240,9 +1272,12 @@
   .smart-mode-preflight__actions .text-button { width: 100%; justify-content: center; }
   .detection-visual__bar { align-items: flex-start; flex-direction: column; gap: .2rem; }
   .alert-showcase .section-title-row { align-items: flex-start; flex-direction: column; }
+  .imu-head-stage { min-height: 310px; }
+  .imu-head-scene { height: 280px; transform: scale(.86); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .detection-visual__frame img,
   .detection-visual__paused { transition-duration: .01ms; }
+  .imu-head-model { transition-duration: .01ms; }
 }

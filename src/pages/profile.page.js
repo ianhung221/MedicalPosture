@@ -39,13 +39,13 @@ export function renderProfilePage(container) {
           </section>
 
           <section class="setting-section" aria-labelledby="monitoring-lifecycle-title">
-            <div class="setting-section__heading"><span class="setting-section__icon material-symbols-rounded" aria-hidden="true">tab_move</span><div><h2 id="monitoring-lifecycle-title">監測與隱私</h2><p>控制本機 AI 在平台頁面切換與桌面工作期間的運作方式。</p></div><span class="demo-tag">本機設定</span></div>
+            <div class="setting-section__heading"><span class="setting-section__icon material-symbols-rounded" aria-hidden="true">tab_move</span><div><h2 id="monitoring-lifecycle-title">監測與隱私</h2><p>控制支援的本機偵測模式在平台頁面切換期間的運作方式。</p></div><span class="demo-tag">本機設定</span></div>
             <div class="setting-list">
               <div class="setting-row">
-                <span><strong>離開偵測頁後繼續監測</strong><small>開啟後，在瀏覽平台其他頁面或切換桌面工作時，系統會在瀏覽器允許的情況下持續進行本機 AI 姿勢監測。</small></span>
+                <span><strong>離開偵測頁後繼續監測</strong><small>開啟後，在瀏覽平台其他頁面時，支援的偵測模式會持續監測。切換到其他 App、背景分頁或鎖定螢幕時，實際行為依瀏覽器與感測模式而異。</small></span>
                 <button class="toggle" type="button" aria-label="離開偵測頁後繼續監測" aria-pressed="true" data-setting-key="continueMonitoringAcrossRoutes"></button>
               </div>
-              <p class="profile-panel__note"><span class="material-symbols-rounded" aria-hidden="true">privacy_tip</span>影像僅在本機處理，不會上傳。此設定不代表鎖屏或作業系統背景服務。</p>
+              <p class="profile-panel__note"><span class="material-symbols-rounded" aria-hidden="true">privacy_tip</span>影像與手機姿態資料只在本機處理，不會上傳。IMU 在頁面不可見時會停止並要求重新校正。</p>
             </div>
           </section>
 

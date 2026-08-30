@@ -16,6 +16,7 @@ import {
 } from '../context/context-engine.js';
 import { aiMonitoringEngine } from '../ai/ai-monitoring-engine.js';
 import { DEFAULT_MODEL_VARIANT } from '../ai/mediapipe-config.js';
+import { imuMonitoringEngine } from '../imu/imu-monitoring-engine.js';
 
 const modeLabels = { smart: '智慧模式', ai: 'AI 坐姿辨識', imu: 'IMU 姿態感測' };
 const methodLabels = { ai: 'AI', imu: 'IMU', none: '不監測' };
@@ -64,7 +65,7 @@ export function monitoringControlsMarkup() {
       <section class="monitoring-confirm" data-monitoring-confirm hidden role="dialog" aria-modal="true" aria-labelledby="monitoring-confirm-title">
         <div class="monitoring-confirm__card">
           <span class="icon-tile icon-tile--danger"><span class="material-symbols-rounded" aria-hidden="true">stop_circle</span></span>
-          <div><h2 id="monitoring-confirm-title">結束本次偵測？</h2><p>結束後會顯示本次 Demo 摘要，所有數值皆為 Mock Data。</p></div>
+          <div><h2 id="monitoring-confirm-title">結束本次偵測？</h2><p>結束後會顯示本次工作階段摘要；內容會依實際啟用的本機偵測能力清楚標示。</p></div>
           <div class="monitoring-confirm__actions">
             <button class="button button--secondary" type="button" data-monitoring-action="cancel-end">繼續偵測</button>
             <button class="button button--danger-quiet" type="button" data-monitoring-action="confirm-end">結束偵測</button>
@@ -86,6 +87,10 @@ export function mountMonitoringControls(app) {
   let riskTimer = null;
   let dragFrame = null;
   let dragState = null;
+
+  imuMonitoringEngine.configure({ privacyPause: () => {
+    if (currentSession?.status === 'monitoring' && currentSession.activeMethod === 'imu') pauseMonitoring();
+  } });
 
   const setPanelOpen = (open) => {
     panel.hidden = !open;
@@ -110,16 +115,18 @@ export function mountMonitoringControls(app) {
     chrome.dataset.status = session.status;
     chrome.dataset.riskLevel = session.riskLevel;
     const realAi = session.activeMethod === 'ai' && session.aiRuntime?.runtimeKind === 'mediapipe-web';
+    const realImu = session.activeMethod === 'imu' && session.imuRuntime?.runtimeKind === 'browser-sensors';
     const aiPending = session.activeMethod === 'ai' && !realAi;
-    chrome.querySelector('[data-monitoring-title]').textContent = paused ? '偵測已暫停' : aiPending ? 'AI 等待啟動' : `${methodLabels[session.activeMethod]} 監測中`;
-    chrome.querySelector('[data-monitoring-subtitle]').textContent = `${context.label}・${realAi ? '本機 AI' : 'Demo'}`;
+    const imuPending = session.activeMethod === 'imu' && !realImu;
+    chrome.querySelector('[data-monitoring-title]').textContent = paused ? '偵測已暫停' : aiPending ? 'AI 等待啟動' : imuPending ? 'IMU 等待啟動' : `${methodLabels[session.activeMethod]} 監測中`;
+    chrome.querySelector('[data-monitoring-subtitle]').textContent = `${context.label}・${realAi ? '本機 AI' : realImu ? '手機 Sensor' : '準備中'}`;
     chrome.querySelector('[data-panel-mode]').textContent = modeLabels[session.mode] || '示範模式';
     chrome.querySelector('[data-panel-context]').textContent = context.label;
     chrome.querySelector('[data-panel-method]').textContent = context.recommendation;
     chrome.querySelector('[data-panel-risk]').textContent = paused ? '已暫停' : riskLabels[session.riskLevel];
     chrome.querySelector('[data-monitoring-truth-copy]').textContent = session.activeMethod === 'ai'
       ? session.aiRuntime?.runtimeKind === 'mediapipe-web' ? 'MediaPipe Web 在本機即時辨識；影像不保存、不上傳。' : 'Web AI 尚待使用者啟動；Python 桌面原型已完成。'
-      : session.activeMethod === 'imu' ? 'IMU／穿戴資料為 Demo／Mock，尚未連接真實頭部感測器。' : '目前為合理暫停狀態，沒有執行姿勢感測。';
+      : session.activeMethod === 'imu' ? realImu ? '手機內建方向感測器正在本機運作；穿戴式 IMU 尚未完成。' : '手機 IMU 概念驗證尚待啟動；穿戴式裝置仍為規劃功能。' : '目前為合理暫停狀態，沒有執行姿勢感測。';
     chrome.querySelector('[data-monitoring-pause-icon]').textContent = paused ? 'play_arrow' : 'pause';
     chrome.querySelector('[data-panel-pause-icon]').textContent = paused ? 'play_arrow' : 'pause';
     chrome.querySelector('[data-panel-pause-label]').textContent = paused ? '繼續' : '暫停';
@@ -140,21 +147,23 @@ export function mountMonitoringControls(app) {
     lastRisk = session.riskLevel;
   };
 
-  const onClick = (event) => {
+  const onClick = async (event) => {
     const trigger = event.target.closest('[data-monitoring-action]');
     if (!trigger || !currentSession) return;
     const action = trigger.dataset.monitoringAction;
     if (action === 'toggle-details') setPanelOpen(panel.hidden);
     if (action === 'toggle-pause') {
       if (currentSession.status === 'paused') {
-        if (currentSession.activeMethod === 'ai' && window.location.hash !== '#/assessment') { window.location.hash = '#/assessment'; return; }
         resumeMonitoring();
         if (currentSession.activeMethod === 'ai') {
           const video = document.querySelector('[data-ai-video]'); const canvas = document.querySelector('[data-ai-canvas]');
           if (video && canvas) void aiMonitoringEngine.start({ video, canvas, requestedModel: DEFAULT_MODEL_VARIANT });
+          else void aiMonitoringEngine.start({ requestedModel: DEFAULT_MODEL_VARIANT });
         }
+        if (currentSession.activeMethod === 'imu' && !(await imuMonitoringEngine.resume())) pauseMonitoring();
       } else {
         if (currentSession.activeMethod === 'ai') aiMonitoringEngine.pause({ reason: 'global-control' });
+        if (currentSession.activeMethod === 'imu') imuMonitoringEngine.pause({ reason: 'global-control' });
         pauseMonitoring();
       }
     }
@@ -163,13 +172,17 @@ export function mountMonitoringControls(app) {
     if (action === 'apply-suggestion') {
       const nextMethod = currentSession.pendingRecommendation?.recommendation?.decision;
       if (currentSession.activeMethod === 'ai' && nextMethod !== 'ai') aiMonitoringEngine.stop();
+      if (currentSession.activeMethod === 'imu' && nextMethod !== 'imu') imuMonitoringEngine.stop();
       applyPendingMonitoringRecommendation();
+      if (nextMethod === 'ai') void aiMonitoringEngine.start({ requestedModel: DEFAULT_MODEL_VARIANT });
+      if (nextMethod === 'imu' && !(await imuMonitoringEngine.start())) pauseMonitoring();
     }
     if (action === 'dismiss-suggestion') dismissPendingMonitoringRecommendation();
     if (action === 'confirm-end') {
       confirm.hidden = true;
       setPanelOpen(false);
       aiMonitoringEngine.stop();
+      imuMonitoringEngine.stop();
       endMonitoring();
       stopContextEngine();
       window.location.hash = '#/assessment';

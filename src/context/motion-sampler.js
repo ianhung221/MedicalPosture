@@ -1,3 +1,5 @@
+import { requestSensorPermissions } from '../sensors/sensor-permission.js';
+
 function finiteVector(vector) {
   if (!vector) return null;
   const values = ['x', 'y', 'z'].map((axis) => Number(vector[axis]));
@@ -16,7 +18,7 @@ export function normalizeMotionEvent(event, now = Date.now) {
   };
 }
 
-export function createMotionSampler({ environment = {}, timeoutMs = 3000, now = Date.now, onSample = () => {}, onStatus = () => {} } = {}) {
+export function createMotionSampler({ environment = {}, timeoutMs = 3000, now = Date.now, onSample = () => {}, onStatus = () => {}, permissionRequester = requestSensorPermissions } = {}) {
   const eventTarget = environment.eventTarget ?? (typeof window === 'undefined' ? null : window);
   const MotionEvent = environment.DeviceMotionEvent ?? globalThis.DeviceMotionEvent ?? null;
   let permission = typeof MotionEvent?.requestPermission === 'function' ? 'prompt' : 'unknown';
@@ -85,11 +87,8 @@ export function createMotionSampler({ environment = {}, timeoutMs = 3000, now = 
     if (!MotionEvent || !eventTarget?.addEventListener) return publish('unavailable', { permission: 'unsupported' });
     if (!visible) return publish('unknown', { receivingData: false, stale: true });
     if (typeof MotionEvent.requestPermission === 'function') {
-      try {
-        permission = await MotionEvent.requestPermission();
-      } catch (error) {
-        permission = error?.name === 'NotAllowedError' ? 'denied' : 'unknown';
-      }
+      const result = await permissionRequester({ motion: true, orientation: false, environment: { ...environment, DeviceMotionEvent: MotionEvent } });
+      permission = result.motion?.permission || 'unknown';
       if (permission !== 'granted') {
         active = false;
         return publish(permission === 'denied' ? 'denied' : 'unknown', { receivingData: false });

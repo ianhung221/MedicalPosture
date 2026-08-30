@@ -8,6 +8,14 @@ const initialAiRuntime = () => ({
   performance: { inferenceCount: 0, fps: 0, p50Ms: 0, p95Ms: 0, latestMs: 0 }, lastUpdateAt: null,
 });
 
+const initialImuRuntime = () => ({
+  status: 'awaiting-permission', runtimeKind: 'pending', error: null,
+  permission: { motion: 'unknown', orientation: 'unknown' },
+  calibration: { active: false, completed: false, elapsedMs: 0, validSamples: 0, stable: false, baseline: null },
+  orientation: { pitch: 0, roll: 0, yaw: 0, yawAvailable: false },
+  sampleCadenceHz: 0, orientationSampleCount: 0, motionSampleCount: 0, lastUpdateAt: null,
+});
+
 const CONTEXTS = {
   'fixed-indoor': {
     label: '室內固定使用',
@@ -19,19 +27,19 @@ const CONTEXTS = {
   },
   'commute-walking': {
     label: '通勤／行走',
-    device: '頭部穿戴裝置（Mock）',
+    device: '手機內建感測器（概念驗證）',
     recommendation: 'IMU 姿態感測',
     method: 'imu',
     riskLevel: 'high-risk',
-    reason: '行走情境以頭部姿態與持續低頭風險為主要示範資訊。',
+    reason: '以手機感測器驗證相對姿態資料流程；尚未進行行走低頭分類或穿戴裝置整合。',
   },
   'wearing-device': {
     label: '無攝影機／有穿戴裝置',
-    device: '頭部穿戴裝置（Mock）',
+    device: '手機內建感測器（概念驗證）',
     recommendation: 'IMU 姿態感測',
     method: 'imu',
     riskLevel: 'attention',
-    reason: '目前沒有合適鏡頭，改以穿戴裝置的 IMU 概念流程進行示範。',
+    reason: '目前沒有合適鏡頭，改以手機 IMU 驗證相對姿態資料流程；穿戴裝置仍屬規劃。',
   },
   class: {
     label: '上課',
@@ -45,10 +53,10 @@ const CONTEXTS = {
     label: '固定使用', device: '瀏覽器能力檢查', recommendation: '智慧模式建議', method: 'none', riskLevel: 'normal', reason: '依 Phase 1 情境訊號形成的建議。',
   },
   'detected-walking': {
-    label: '行走', device: '手機動作感測', recommendation: 'IMU 姿態感測（Demo）', method: 'imu', riskLevel: 'normal', reason: 'DeviceMotion 只用於行走情境判斷；頭部姿態仍為 Mock。',
+    label: '行走', device: '手機動作／方向感測', recommendation: 'IMU 姿態感測', method: 'imu', riskLevel: 'normal', reason: 'DeviceMotion 用於活動情境，啟動 IMU 後再以手機方向感測器建立相對姿態；穿戴式 IMU 尚未完成。',
   },
   'detected-moving': {
-    label: '移動', device: '手機動作感測', recommendation: 'IMU 姿態感測（Demo）', method: 'imu', riskLevel: 'normal', reason: 'DeviceMotion 只用於移動情境判斷；頭部姿態仍為 Mock。',
+    label: '移動', device: '手機動作／方向感測', recommendation: 'IMU 姿態感測', method: 'imu', riskLevel: 'normal', reason: 'DeviceMotion 用於活動情境，啟動 IMU 後再以手機方向感測器建立相對姿態；穿戴式 IMU 尚未完成。',
   },
   'detected-unknown': {
     label: '活動尚未判定', device: '能力尚未確認', recommendation: '需要使用者選擇', method: 'none', riskLevel: 'normal', reason: '目前資訊不足，不進行自動推論。',
@@ -72,6 +80,7 @@ const initialState = () => ({
   pendingRecommendation: null,
   ignoredRecommendationKey: null,
   aiRuntime: null,
+  imuRuntime: null,
   lastSummary: null,
 });
 
@@ -93,6 +102,12 @@ function snapshot(at = Date.now()) {
     aiRuntime: state.aiRuntime ? {
       ...state.aiRuntime,
       calibration: { ...state.aiRuntime.calibration }, counts: { ...state.aiRuntime.counts }, performance: { ...state.aiRuntime.performance },
+    } : null,
+    imuRuntime: state.imuRuntime ? {
+      ...state.imuRuntime,
+      permission: { ...state.imuRuntime.permission },
+      calibration: { ...state.imuRuntime.calibration, baseline: state.imuRuntime.calibration?.baseline ? { ...state.imuRuntime.calibration.baseline } : null, quality: state.imuRuntime.calibration?.quality ? { ...state.imuRuntime.calibration.quality } : null },
+      orientation: { ...state.imuRuntime.orientation },
     } : null,
     lastSummary: state.lastSummary ? { ...state.lastSummary, contextDetails: state.lastSummary.contextDetails ? { ...state.lastSummary.contextDetails } : null } : null,
   };
@@ -132,7 +147,7 @@ export function startMonitoring({ mode, context = 'fixed-indoor', recommendation
   assertOneOf(context, Object.keys(CONTEXTS), 'context');
 
   let activeMethod = mode;
-  let riskLevel = mode === 'imu' ? 'attention' : 'normal';
+  let riskLevel = 'normal';
   let status = 'monitoring';
   if (mode === 'smart') {
     if (!recommendation || !['ai', 'imu', 'pause'].includes(recommendation.decision)) {
@@ -163,6 +178,7 @@ export function startMonitoring({ mode, context = 'fixed-indoor', recommendation
     pendingRecommendation: null,
     ignoredRecommendationKey: null,
     aiRuntime: activeMethod === 'ai' ? initialAiRuntime() : null,
+    imuRuntime: activeMethod === 'imu' ? initialImuRuntime() : null,
     lastSummary: null,
   };
   return emit();
@@ -215,6 +231,7 @@ export function applyPendingMonitoringRecommendation(at = Date.now()) {
     pendingRecommendation: null,
     ignoredRecommendationKey: null,
     aiRuntime: decision === 'ai' ? initialAiRuntime() : null,
+    imuRuntime: decision === 'imu' ? initialImuRuntime() : null,
   };
   return emit();
 }
@@ -228,13 +245,13 @@ export function dismissPendingMonitoringRecommendation() {
 
 export function pauseMonitoring(at = Date.now()) {
   if (state.status !== 'monitoring') return snapshot();
-  state = { ...state, status: 'paused', activeDurationMs: accumulatedActiveDuration(at), activeSince: null, aiRuntime: state.aiRuntime ? { ...state.aiRuntime, status: 'paused' } : null };
+  state = { ...state, status: 'paused', activeDurationMs: accumulatedActiveDuration(at), activeSince: null, aiRuntime: state.aiRuntime ? { ...state.aiRuntime, status: 'paused' } : null, imuRuntime: state.imuRuntime ? { ...state.imuRuntime, status: 'paused' } : null };
   return emit();
 }
 
 export function resumeMonitoring(at = Date.now()) {
   if (state.status !== 'paused') return snapshot();
-  state = { ...state, status: 'monitoring', activeSince: at, aiRuntime: state.aiRuntime ? { ...state.aiRuntime, status: 'awaiting-camera', error: null } : null };
+  state = { ...state, status: 'monitoring', activeSince: at, aiRuntime: state.aiRuntime ? { ...state.aiRuntime, status: 'awaiting-camera', error: null } : null, imuRuntime: state.imuRuntime ? { ...state.imuRuntime, status: 'awaiting-permission', error: null } : null };
   return emit();
 }
 
@@ -254,6 +271,24 @@ export function updateAiRuntime(patch) {
   return emit();
 }
 
+export function updateImuRuntime(patch) {
+  if (state.status === 'idle' || state.activeMethod !== 'imu' || !state.imuRuntime) return snapshot();
+  const next = typeof patch === 'function' ? patch(snapshot().imuRuntime) : patch;
+  const allowed = ['status', 'runtimeKind', 'error', 'permission', 'calibration', 'orientation', 'sampleCadenceHz', 'orientationSampleCount', 'motionSampleCount', 'pauseReason'];
+  const sanitized = Object.fromEntries(Object.entries(next || {}).filter(([key]) => allowed.includes(key)));
+  state = {
+    ...state,
+    imuRuntime: {
+      ...state.imuRuntime, ...sanitized,
+      permission: { ...state.imuRuntime.permission, ...(sanitized.permission || {}) },
+      calibration: { ...state.imuRuntime.calibration, ...(sanitized.calibration || {}) },
+      orientation: { ...state.imuRuntime.orientation, ...(sanitized.orientation || {}) },
+      lastUpdateAt: Date.now(),
+    },
+  };
+  return emit();
+}
+
 export function setMonitoringRisk(riskLevel) {
   assertOneOf(riskLevel, ['normal', 'attention', 'high-risk'], 'riskLevel');
   if (state.status === 'idle') return snapshot();
@@ -267,6 +302,7 @@ export function endMonitoring(at = Date.now()) {
   const durationMs = accumulatedActiveDuration(at);
   const durationMinutes = Math.max(1, Math.round(durationMs / 60000));
   const hasRealAi = completed.activeMethod === 'ai' && completed.aiRuntime?.runtimeKind === 'mediapipe-web';
+  const hasRealImu = completed.activeMethod === 'imu' && completed.imuRuntime?.runtimeKind === 'browser-sensors';
   const goodPercent = hasRealAi && completed.aiRuntime.observedDurationMs > 0 ? Math.min(100, Math.round(completed.aiRuntime.goodDurationMs / completed.aiRuntime.observedDurationMs * 100)) : 0;
   const lastSummary = {
     mode: completed.mode,
@@ -274,14 +310,14 @@ export function endMonitoring(at = Date.now()) {
     context: completed.context,
     contextDetails: completed.contextDetails,
     duration: durationMs < 60000 ? `${Math.max(1, Math.round(durationMs / 1000))} 秒` : `${durationMinutes} 分鐘`,
-    runtimeKind: completed.aiRuntime?.runtimeKind || 'mock',
+    runtimeKind: completed.aiRuntime?.runtimeKind || completed.imuRuntime?.runtimeKind || 'mock',
     modelVariant: completed.aiRuntime?.modelVariant || null,
     goodPosture: hasRealAi ? `${goodPercent}%` : completed.activeMethod === 'ai' ? '尚無真實資料' : '—',
     lookingDown: hasRealAi ? `${completed.aiRuntime.counts.LOW_HEAD} 次` : completed.activeMethod === 'ai' ? '尚無真實資料' : '—',
-    walkingDown: completed.activeMethod === 'imu' ? '2 次' : '0 次',
-    reminders: hasRealAi ? `${completed.aiRuntime.reminders} 次` : completed.riskLevel === 'high-risk' ? '3 次' : '1 次',
+    walkingDown: completed.activeMethod === 'imu' ? '尚未分類' : '0 次',
+    reminders: hasRealAi ? `${completed.aiRuntime.reminders} 次` : '—',
     insight: completed.activeMethod === 'imu'
-      ? '本次 Demo 顯示行走低頭事件較集中，未來可透過 IMU 提供分級安全提醒。'
+      ? hasRealImu ? '本次摘要確認手機本機感測器已建立相對姿態；Phase 3A 尚未進行低頭或行走風險分類。' : '本次尚未建立真實手機姿態資料；穿戴式 IMU 仍為未來整合方向。'
       : completed.activeMethod === 'ai'
         ? hasRealAi ? '本次摘要由 MediaPipe Web 本機辨識產生，僅供姿勢健康提醒，不作醫療診斷。' : '本次尚未建立真實 AI 偵測資料。'
         : '本次情境維持不監測，符合以學習優先且不過度干擾的設計原則。',
