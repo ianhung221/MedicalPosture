@@ -1,0 +1,7 @@
+MediaPipe Tasks Vision 1.0.1
+Copyright 2026 Google LLC
+Licensed under the Apache License, Version 2.0.
+
+Official package: https://www.npmjs.com/package/@mediapipe/tasks-vision/v/1.0.1
+Model source: https://developers.google.com/edge/mediapipe/solutions/vision/pose_landmarker/
+License text: https://www.apache.org/licenses/LICENSE-2.0

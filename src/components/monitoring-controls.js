@@ -14,6 +14,8 @@ import {
   stopContextEngine,
   subscribeContext,
 } from '../context/context-engine.js';
+import { aiMonitoringEngine } from '../ai/ai-monitoring-engine.js';
+import { DEFAULT_MODEL_VARIANT } from '../ai/mediapipe-config.js';
 
 const modeLabels = { smart: '智慧模式', ai: 'AI 坐姿辨識', imu: 'IMU 姿態感測' };
 const methodLabels = { ai: 'AI', imu: 'IMU', none: '不監測' };
@@ -51,7 +53,7 @@ export function monitoringControlsMarkup() {
           <button class="button" type="button" data-monitoring-action="apply-suggestion">確認</button>
           <button class="text-button" type="button" data-monitoring-action="dismiss-suggestion">維持目前模式</button>
         </div>
-        <p class="monitoring-panel__truth"><span class="material-symbols-rounded" aria-hidden="true">science</span>Demo／Mock 操作流程，未連接真實感測器。</p>
+        <p class="monitoring-panel__truth" data-monitoring-truth><span class="material-symbols-rounded" aria-hidden="true">science</span><span data-monitoring-truth-copy>Demo／Mock 操作流程，未連接真實感測器。</span></p>
         <div class="monitoring-panel__actions">
           <button class="button button--secondary" type="button" data-monitoring-action="toggle-pause"><span class="material-symbols-rounded" aria-hidden="true" data-panel-pause-icon>pause</span><span data-panel-pause-label>暫停</span></button>
           <button class="button button--danger-quiet" type="button" data-monitoring-action="request-end"><span class="material-symbols-rounded" aria-hidden="true">stop_circle</span>結束偵測</button>
@@ -107,12 +109,17 @@ export function mountMonitoringControls(app) {
 
     chrome.dataset.status = session.status;
     chrome.dataset.riskLevel = session.riskLevel;
-    chrome.querySelector('[data-monitoring-title]').textContent = paused ? '偵測已暫停' : `${methodLabels[session.activeMethod]} 監測中`;
-    chrome.querySelector('[data-monitoring-subtitle]').textContent = `${context.label}・Demo`;
+    const realAi = session.activeMethod === 'ai' && session.aiRuntime?.runtimeKind === 'mediapipe-web';
+    const aiPending = session.activeMethod === 'ai' && !realAi;
+    chrome.querySelector('[data-monitoring-title]').textContent = paused ? '偵測已暫停' : aiPending ? 'AI 等待啟動' : `${methodLabels[session.activeMethod]} 監測中`;
+    chrome.querySelector('[data-monitoring-subtitle]').textContent = `${context.label}・${realAi ? '本機 AI' : 'Demo'}`;
     chrome.querySelector('[data-panel-mode]').textContent = modeLabels[session.mode] || '示範模式';
     chrome.querySelector('[data-panel-context]').textContent = context.label;
     chrome.querySelector('[data-panel-method]').textContent = context.recommendation;
     chrome.querySelector('[data-panel-risk]').textContent = paused ? '已暫停' : riskLabels[session.riskLevel];
+    chrome.querySelector('[data-monitoring-truth-copy]').textContent = session.activeMethod === 'ai'
+      ? session.aiRuntime?.runtimeKind === 'mediapipe-web' ? 'MediaPipe Web 在本機即時辨識；影像不保存、不上傳。' : 'Web AI 尚待使用者啟動；Python 桌面原型已完成。'
+      : session.activeMethod === 'imu' ? 'IMU／穿戴資料為 Demo／Mock，尚未連接真實頭部感測器。' : '目前為合理暫停狀態，沒有執行姿勢感測。';
     chrome.querySelector('[data-monitoring-pause-icon]').textContent = paused ? 'play_arrow' : 'pause';
     chrome.querySelector('[data-panel-pause-icon]').textContent = paused ? 'play_arrow' : 'pause';
     chrome.querySelector('[data-panel-pause-label]').textContent = paused ? '繼續' : '暫停';
@@ -138,14 +145,31 @@ export function mountMonitoringControls(app) {
     if (!trigger || !currentSession) return;
     const action = trigger.dataset.monitoringAction;
     if (action === 'toggle-details') setPanelOpen(panel.hidden);
-    if (action === 'toggle-pause') currentSession.status === 'paused' ? resumeMonitoring() : pauseMonitoring();
+    if (action === 'toggle-pause') {
+      if (currentSession.status === 'paused') {
+        if (currentSession.activeMethod === 'ai' && window.location.hash !== '#/assessment') { window.location.hash = '#/assessment'; return; }
+        resumeMonitoring();
+        if (currentSession.activeMethod === 'ai') {
+          const video = document.querySelector('[data-ai-video]'); const canvas = document.querySelector('[data-ai-canvas]');
+          if (video && canvas) void aiMonitoringEngine.start({ video, canvas, requestedModel: DEFAULT_MODEL_VARIANT });
+        }
+      } else {
+        if (currentSession.activeMethod === 'ai') aiMonitoringEngine.pause({ reason: 'global-control' });
+        pauseMonitoring();
+      }
+    }
     if (action === 'request-end') confirm.hidden = false;
     if (action === 'cancel-end') confirm.hidden = true;
-    if (action === 'apply-suggestion') applyPendingMonitoringRecommendation();
+    if (action === 'apply-suggestion') {
+      const nextMethod = currentSession.pendingRecommendation?.recommendation?.decision;
+      if (currentSession.activeMethod === 'ai' && nextMethod !== 'ai') aiMonitoringEngine.stop();
+      applyPendingMonitoringRecommendation();
+    }
     if (action === 'dismiss-suggestion') dismissPendingMonitoringRecommendation();
     if (action === 'confirm-end') {
       confirm.hidden = true;
       setPanelOpen(false);
+      aiMonitoringEngine.stop();
       endMonitoring();
       stopContextEngine();
       window.location.hash = '#/assessment';

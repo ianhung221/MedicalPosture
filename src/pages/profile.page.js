@@ -1,3 +1,5 @@
+import { getPlatformSettings, setContinueMonitoringAcrossRoutes, subscribePlatformSettings } from '../state/platform-settings.js';
+
 export function renderProfilePage(container) {
   const toggleRow = (name, description, enabled = true) => `
     <div class="setting-row">
@@ -33,6 +35,17 @@ export function renderProfilePage(container) {
             <div class="preference-options" role="group" aria-label="偵測偏好">
               <button class="preference-option is-active" type="button" aria-pressed="true" data-preference="智慧模式"><span class="material-symbols-rounded" aria-hidden="true">auto_awesome</span><span><strong>智慧模式</strong><small>依裝置與情境建議偵測方式</small></span><span class="selection-check material-symbols-rounded" aria-hidden="true">check_circle</span></button>
               <button class="preference-option" type="button" aria-pressed="false" data-preference="手動選擇"><span class="material-symbols-rounded" aria-hidden="true">touch_app</span><span><strong>手動選擇</strong><small>每次自行選擇 AI 或 IMU</small></span><span class="selection-check material-symbols-rounded" aria-hidden="true">radio_button_unchecked</span></button>
+            </div>
+          </section>
+
+          <section class="setting-section" aria-labelledby="monitoring-lifecycle-title">
+            <div class="setting-section__heading"><span class="setting-section__icon material-symbols-rounded" aria-hidden="true">tab_move</span><div><h2 id="monitoring-lifecycle-title">監測與隱私</h2><p>控制本機 AI 在平台頁面切換與桌面工作期間的運作方式。</p></div><span class="demo-tag">本機設定</span></div>
+            <div class="setting-list">
+              <div class="setting-row">
+                <span><strong>離開偵測頁後繼續監測</strong><small>開啟後，在瀏覽平台其他頁面或切換桌面工作時，系統會在瀏覽器允許的情況下持續進行本機 AI 姿勢監測。</small></span>
+                <button class="toggle" type="button" aria-label="離開偵測頁後繼續監測" aria-pressed="true" data-setting-key="continueMonitoringAcrossRoutes"></button>
+              </div>
+              <p class="profile-panel__note"><span class="material-symbols-rounded" aria-hidden="true">privacy_tip</span>影像僅在本機處理，不會上傳。此設定不代表鎖屏或作業系統背景服務。</p>
             </div>
           </section>
 
@@ -73,7 +86,25 @@ export function renderProfilePage(container) {
       </div>
     </div>`;
 
-  container.addEventListener('click', (event) => {
+  const updateLifecycleToggle = (settings = getPlatformSettings()) => {
+    const toggle = container.querySelector('[data-setting-key="continueMonitoringAcrossRoutes"]');
+    if (!toggle) return;
+    toggle.classList.toggle('is-on', settings.continueMonitoringAcrossRoutes);
+    toggle.setAttribute('aria-pressed', String(settings.continueMonitoringAcrossRoutes));
+  };
+
+  const onClick = (event) => {
+    const settingToggle = event.target.closest('[data-setting-key="continueMonitoringAcrossRoutes"]');
+    if (settingToggle) {
+      const next = !getPlatformSettings().continueMonitoringAcrossRoutes;
+      setContinueMonitoringAcrossRoutes(next);
+      const toast = document.querySelector('.toast');
+      if (toast) {
+        toast.textContent = next ? '已開啟跨頁本機 AI 監測' : '已關閉跨頁監測；離開偵測頁時將暫停 AI';
+        toast.classList.add('is-visible'); window.setTimeout(() => toast.classList.remove('is-visible'), 2200);
+      }
+      return;
+    }
     const option = event.target.closest('[data-preference]');
     if (!option) return;
 
@@ -91,5 +122,8 @@ export function renderProfilePage(container) {
       toast.classList.add('is-visible');
       window.setTimeout(() => toast.classList.remove('is-visible'), 2200);
     }
-  });
+  };
+  container.addEventListener('click', onClick);
+  const unsubscribeSettings = subscribePlatformSettings(updateLifecycleToggle);
+  return () => { container.removeEventListener('click', onClick); unsubscribeSettings(); };
 }

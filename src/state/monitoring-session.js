@@ -1,5 +1,13 @@
 const listeners = new Set();
 
+const initialAiRuntime = () => ({
+  status: 'awaiting-camera', runtimeKind: 'pending', modelVariant: 'full', error: null,
+  postureState: 'UNKNOWN', postureDurationMs: 0,
+  calibration: { active: false, completed: false, validFrames: 0, requiredFrames: 45, progress: 0, thresholdRatio: null },
+  counts: { LOW_HEAD: 0, HAND_ON_FACE: 0, SLUMPING: 0 }, goodDurationMs: 0, observedDurationMs: 0, reminders: 0,
+  performance: { inferenceCount: 0, fps: 0, p50Ms: 0, p95Ms: 0, latestMs: 0 }, lastUpdateAt: null,
+});
+
 const CONTEXTS = {
   'fixed-indoor': {
     label: '室內固定使用',
@@ -57,23 +65,35 @@ const initialState = () => ({
   context: 'fixed-indoor',
   activeMethod: 'none',
   startedAt: null,
+  activeDurationMs: 0,
+  activeSince: null,
   contextDetails: null,
   recommendation: null,
   pendingRecommendation: null,
   ignoredRecommendationKey: null,
+  aiRuntime: null,
   lastSummary: null,
 });
 
 let state = initialState();
 
-function snapshot() {
+function accumulatedActiveDuration(at = Date.now()) {
+  return state.activeDurationMs + (state.status === 'monitoring' && Number.isFinite(state.activeSince) ? Math.max(0, at - state.activeSince) : 0);
+}
+
+function snapshot(at = Date.now()) {
   return {
     ...state,
+    activeDurationMs: accumulatedActiveDuration(at),
     contextDetails: state.contextDetails ? { ...state.contextDetails } : null,
     recommendation: state.recommendation ? { ...state.recommendation, requirements: [...(state.recommendation.requirements || [])] } : null,
     pendingRecommendation: state.pendingRecommendation
       ? { ...state.pendingRecommendation, recommendation: { ...state.pendingRecommendation.recommendation, requirements: [...(state.pendingRecommendation.recommendation.requirements || [])] }, details: { ...state.pendingRecommendation.details } }
       : null,
+    aiRuntime: state.aiRuntime ? {
+      ...state.aiRuntime,
+      calibration: { ...state.aiRuntime.calibration }, counts: { ...state.aiRuntime.counts }, performance: { ...state.aiRuntime.performance },
+    } : null,
     lastSummary: state.lastSummary ? { ...state.lastSummary, contextDetails: state.lastSummary.contextDetails ? { ...state.lastSummary.contextDetails } : null } : null,
   };
 }
@@ -92,6 +112,10 @@ export function getMonitoringSession() {
   return snapshot();
 }
 
+export function getMonitoringDurationMs(at = Date.now()) {
+  return accumulatedActiveDuration(at);
+}
+
 export function getContextDetails(context = state.context, override = null) {
   const activeDetails = !override && context === state.context ? state.contextDetails : null;
   return { ...(override || activeDetails || CONTEXTS[context] || CONTEXTS['fixed-indoor']) };
@@ -103,7 +127,7 @@ export function subscribeMonitoringSession(listener) {
   return () => listeners.delete(listener);
 }
 
-export function startMonitoring({ mode, context = 'fixed-indoor', recommendation = null, contextDetails = null }) {
+export function startMonitoring({ mode, context = 'fixed-indoor', recommendation = null, contextDetails = null }, at = Date.now()) {
   assertOneOf(mode, ['smart', 'ai', 'imu'], 'mode');
   assertOneOf(context, Object.keys(CONTEXTS), 'context');
 
@@ -131,11 +155,14 @@ export function startMonitoring({ mode, context = 'fixed-indoor', recommendation
     riskLevel,
     context,
     activeMethod,
-    startedAt: Date.now(),
+    startedAt: at,
+    activeDurationMs: 0,
+    activeSince: status === 'monitoring' ? at : null,
     contextDetails: contextDetails ? { ...contextDetails } : null,
     recommendation: recommendation ? { ...recommendation, requirements: [...(recommendation.requirements || [])] } : null,
     pendingRecommendation: null,
     ignoredRecommendationKey: null,
+    aiRuntime: activeMethod === 'ai' ? initialAiRuntime() : null,
     lastSummary: null,
   };
   return emit();
@@ -170,13 +197,16 @@ export function syncMonitoringRecommendation(recommendation, { context, contextD
   return emit();
 }
 
-export function applyPendingMonitoringRecommendation() {
+export function applyPendingMonitoringRecommendation(at = Date.now()) {
   if (!state.pendingRecommendation || state.status === 'idle' || state.mode !== 'smart') return snapshot();
   const { recommendation, context, details } = state.pendingRecommendation;
   const decision = recommendation.decision;
+  const activeDurationMs = decision === 'pause' ? accumulatedActiveDuration(at) : state.activeDurationMs;
   state = {
     ...state,
     status: decision === 'pause' ? 'paused' : state.status === 'paused' ? 'paused' : 'monitoring',
+    activeDurationMs,
+    activeSince: decision === 'pause' ? null : state.activeSince,
     activeMethod: decision === 'pause' ? 'none' : decision,
     riskLevel: 'normal',
     context,
@@ -184,6 +214,7 @@ export function applyPendingMonitoringRecommendation() {
     recommendation: { ...recommendation, shouldAutoApply: false, requirements: [...(recommendation.requirements || [])] },
     pendingRecommendation: null,
     ignoredRecommendationKey: null,
+    aiRuntime: decision === 'ai' ? initialAiRuntime() : null,
   };
   return emit();
 }
@@ -195,15 +226,31 @@ export function dismissPendingMonitoringRecommendation() {
   return emit();
 }
 
-export function pauseMonitoring() {
+export function pauseMonitoring(at = Date.now()) {
   if (state.status !== 'monitoring') return snapshot();
-  state = { ...state, status: 'paused' };
+  state = { ...state, status: 'paused', activeDurationMs: accumulatedActiveDuration(at), activeSince: null, aiRuntime: state.aiRuntime ? { ...state.aiRuntime, status: 'paused' } : null };
   return emit();
 }
 
-export function resumeMonitoring() {
+export function resumeMonitoring(at = Date.now()) {
   if (state.status !== 'paused') return snapshot();
-  state = { ...state, status: 'monitoring' };
+  state = { ...state, status: 'monitoring', activeSince: at, aiRuntime: state.aiRuntime ? { ...state.aiRuntime, status: 'awaiting-camera', error: null } : null };
+  return emit();
+}
+
+export function updateAiRuntime(patch) {
+  if (state.status === 'idle' || state.activeMethod !== 'ai' || !state.aiRuntime) return snapshot();
+  const next = typeof patch === 'function' ? patch(snapshot().aiRuntime) : patch;
+  state = {
+    ...state,
+    aiRuntime: {
+      ...state.aiRuntime, ...next,
+      calibration: { ...state.aiRuntime.calibration, ...(next?.calibration || {}) },
+      counts: { ...state.aiRuntime.counts, ...(next?.counts || {}) },
+      performance: { ...state.aiRuntime.performance, ...(next?.performance || {}) },
+      lastUpdateAt: Date.now(),
+    },
+  };
   return emit();
 }
 
@@ -214,24 +261,29 @@ export function setMonitoringRisk(riskLevel) {
   return emit();
 }
 
-export function endMonitoring() {
+export function endMonitoring(at = Date.now()) {
   if (state.status === 'idle') return snapshot();
   const completed = { ...state };
-  const durationMinutes = Math.max(18, Math.round((Date.now() - (state.startedAt || Date.now())) / 60000));
+  const durationMs = accumulatedActiveDuration(at);
+  const durationMinutes = Math.max(1, Math.round(durationMs / 60000));
+  const hasRealAi = completed.activeMethod === 'ai' && completed.aiRuntime?.runtimeKind === 'mediapipe-web';
+  const goodPercent = hasRealAi && completed.aiRuntime.observedDurationMs > 0 ? Math.min(100, Math.round(completed.aiRuntime.goodDurationMs / completed.aiRuntime.observedDurationMs * 100)) : 0;
   const lastSummary = {
     mode: completed.mode,
     activeMethod: completed.activeMethod,
     context: completed.context,
     contextDetails: completed.contextDetails,
-    duration: `${durationMinutes} 分鐘`,
-    goodPosture: completed.activeMethod === 'ai' ? '82%' : '—',
-    lookingDown: completed.activeMethod === 'ai' ? '3 次' : '—',
+    duration: durationMs < 60000 ? `${Math.max(1, Math.round(durationMs / 1000))} 秒` : `${durationMinutes} 分鐘`,
+    runtimeKind: completed.aiRuntime?.runtimeKind || 'mock',
+    modelVariant: completed.aiRuntime?.modelVariant || null,
+    goodPosture: hasRealAi ? `${goodPercent}%` : completed.activeMethod === 'ai' ? '尚無真實資料' : '—',
+    lookingDown: hasRealAi ? `${completed.aiRuntime.counts.LOW_HEAD} 次` : completed.activeMethod === 'ai' ? '尚無真實資料' : '—',
     walkingDown: completed.activeMethod === 'imu' ? '2 次' : '0 次',
-    reminders: completed.riskLevel === 'high-risk' ? '3 次' : '1 次',
+    reminders: hasRealAi ? `${completed.aiRuntime.reminders} 次` : completed.riskLevel === 'high-risk' ? '3 次' : '1 次',
     insight: completed.activeMethod === 'imu'
       ? '本次 Demo 顯示行走低頭事件較集中，未來可透過 IMU 提供分級安全提醒。'
       : completed.activeMethod === 'ai'
-        ? '本次 Demo 的坐姿整體穩定，閱讀時段可持續留意頭部前傾。'
+        ? hasRealAi ? '本次摘要由 MediaPipe Web 本機辨識產生，僅供姿勢健康提醒，不作醫療診斷。' : '本次尚未建立真實 AI 偵測資料。'
         : '本次情境維持不監測，符合以學習優先且不過度干擾的設計原則。',
   };
 

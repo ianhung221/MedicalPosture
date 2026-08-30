@@ -4,13 +4,14 @@ export function assessmentViewKey(session, { manualOpen = false, setupOpen = fal
     return session.lastSummary ? 'summary' : `overview:${manualOpen}:${setupOpen}`;
   }
   const pending = session.pendingRecommendation?.recommendation;
+  const liveAi = session.activeMethod === 'ai';
   return [
     'active',
     session.status,
     session.mode,
     session.activeMethod,
-    session.riskLevel,
-    pending ? `${pending.decision}:${pending.reasonCode}` : 'no-pending',
+    liveAi ? 'ai-risk-incremental' : session.riskLevel,
+    liveAi ? 'ai-pending-incremental' : pending ? `${pending.decision}:${pending.reasonCode}` : 'no-pending',
   ].join(':');
 }
 

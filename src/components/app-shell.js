@@ -14,5 +14,5 @@ export function renderAppShell(pageRenderer, activeRoute) {
   cleanupPage = pageRenderer(document.querySelector('#main-content')) || null;
   cleanupMonitoringControls = mountMonitoringControls(app);
   document.querySelectorAll('.mock-action').forEach((button)=>button.addEventListener('click',()=>{const toast=document.querySelector('.toast');toast.textContent=button.dataset.message||'示範模式：目前顯示概念操作流程';toast.classList.add('is-visible');setTimeout(()=>toast.classList.remove('is-visible'),2200)}));
-  document.querySelectorAll('.toggle').forEach((button)=>button.addEventListener('click',()=>{button.classList.toggle('is-on');button.setAttribute('aria-pressed',button.classList.contains('is-on'))}));
+  document.querySelectorAll('.toggle:not([data-setting-key])').forEach((button)=>button.addEventListener('click',()=>{button.classList.toggle('is-on');button.setAttribute('aria-pressed',button.classList.contains('is-on'))}));
 }
