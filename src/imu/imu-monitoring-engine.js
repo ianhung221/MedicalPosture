@@ -8,7 +8,7 @@ import { IDENTITY_CSS_MATRIX3D, quaternionToCssMatrix3d } from './imu-visual-map
 import { IMU_DIAGNOSTICS_DEBUG } from './imu-debug-config.js';
 import { updateImuRuntime } from '../state/monitoring-session.js';
 
-const initialSnapshot = () => ({ status: 'idle', runtimeKind: 'pending', permission: { motion: 'unknown', orientation: 'unknown' }, calibration: { active: false, completed: false, elapsedMs: 0, validSamples: 0, stable: false, baseline: null }, orientation: { pitch: 0, roll: 0, yaw: 0, yawAvailable: false, singular: false, visualMatrix: IDENTITY_CSS_MATRIX3D }, sampleCadenceHz: 0, motionSampleCount: 0, orientationSampleCount: 0, error: null });
+const initialSnapshot = () => ({ status: 'idle', runtimeKind: 'pending', permission: { motion: 'unknown', orientation: 'unknown' }, calibration: { active: false, completed: false, elapsedMs: 0, validSamples: 0, stable: false, baseline: null }, orientation: { pitch: 0, roll: 0, yaw: 0, yawAvailable: false, singular: false, visualMatrix: IDENTITY_CSS_MATRIX3D, visualQuaternion: { w: 1, x: 0, y: 0, z: 0 } }, sampleCadenceHz: 0, motionSampleCount: 0, orientationSampleCount: 0, error: null });
 
 export function createImuMonitoringEngine({ permissionRequester = requestSensorPermissions, sourceFactory = createImuSensorSource, normalizer = normalizeOrientationSample, smoother = createOrientationSmoother({ alpha: IMU_CONFIG.smoothingAlpha }), calibration = createImuCalibration(), sessionUpdater = updateImuRuntime, now = () => globalThis.performance?.now?.() ?? Date.now(), documentRef = globalThis.document } = {}) {
   let snapshot = initialSnapshot(); let source = null; let running = false; let lastOrientationAt = null; let lastSessionUpdateAt = -Infinity; let onPrivacyPause = null; let debugRaw = null; let debugNormalized = null;
@@ -21,7 +21,8 @@ export function createImuMonitoringEngine({ permissionRequester = requestSensorP
     if (previousStatus !== snapshot.status || currentAt - lastSessionUpdateAt >= IMU_CONFIG.telemetryIntervalMs) {
       lastSessionUpdateAt = currentAt;
       const { status, runtimeKind, permission, calibration: calibrationState, orientation, sampleCadenceHz, motionSampleCount, orientationSampleCount, error, pauseReason } = value;
-      sessionUpdater({ status, runtimeKind, permission, calibration: calibrationState, orientation, sampleCadenceHz, motionSampleCount, orientationSampleCount, error, pauseReason });
+      const { visualQuaternion: _viewOnlyQuaternion, ...sessionOrientation } = orientation || {};
+      sessionUpdater({ status, runtimeKind, permission, calibration: calibrationState, orientation: sessionOrientation, sampleCadenceHz, motionSampleCount, orientationSampleCount, error, pauseReason });
     }
     return value;
   };
@@ -39,7 +40,7 @@ export function createImuMonitoringEngine({ permissionRequester = requestSensorP
     const relative = calibration.relative(normalized); const smoothed = smoother.push(relative);
     const telemetry = quaternionToRelativeTelemetry(smoothed);
     if (!smoothed || !telemetry) return;
-    emit({ status: 'monitoring', runtimeKind: 'browser-sensors', calibration: calibration.getSnapshot(currentAt), orientation: { ...telemetry, visualMatrix: quaternionToCssMatrix3d(smoothed) }, orientationSampleCount: source?.getCounts().orientationCount || 0, motionSampleCount: source?.getCounts().motionCount || 0, sampleCadenceHz: cadence, error: null });
+    emit({ status: 'monitoring', runtimeKind: 'browser-sensors', calibration: calibration.getSnapshot(currentAt), orientation: { ...telemetry, visualMatrix: quaternionToCssMatrix3d(smoothed), visualQuaternion: { ...smoothed } }, orientationSampleCount: source?.getCounts().orientationCount || 0, motionSampleCount: source?.getCounts().motionCount || 0, sampleCadenceHz: cadence, error: null });
   };
   const onMotion = () => { if (running) snapshot.motionSampleCount = source?.getCounts().motionCount || snapshot.motionSampleCount; };
   const onScreenAngle = () => { if (!running) return; calibration.reset(); smoother.reset(); emit({ status: 'recalibration-required', calibration: calibration.getSnapshot(), error: null }); };

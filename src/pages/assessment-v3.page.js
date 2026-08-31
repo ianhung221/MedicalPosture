@@ -30,7 +30,8 @@ import {
 import { aiMonitoringEngine } from '../ai/ai-monitoring-engine.js';
 import { DEFAULT_MODEL_VARIANT, MODEL_VARIANTS, POSTURE_STATES } from '../ai/mediapipe-config.js';
 import { imuMonitoringEngine } from '../imu/imu-monitoring-engine.js';
-import { IDENTITY_CSS_MATRIX3D } from '../imu/imu-visual-mapper.js';
+import { toUserFacingModelQuaternion } from '../imu/imu-3d-orientation-adapter.js';
+import { imuHeadRenderer } from '../imu/imu-head-renderer.js';
 import { getPlatformSettings } from '../state/platform-settings.js';
 
 const modeLabels = { smart: '智慧模式', ai: 'AI 坐姿辨識', imu: 'IMU 姿態感測' };
@@ -193,7 +194,8 @@ function mediaPanel(method, paused, session = null) {
   const isAi = method === 'ai';
   if (!isAi) {
     const runtime = session?.imuRuntime || {}; const live = runtime.runtimeKind === 'browser-sensors'; const preparing = ['requesting-permission', 'waiting-samples', 'calibrating', 'monitoring'].includes(runtime.status);
-    return `<figure class="detection-visual detection-visual--imu imu-live-visual ${paused ? 'is-paused' : ''}" data-imu-visual data-runtime="${runtime.status || 'awaiting-permission'}"><div class="detection-visual__bar"><span><i aria-hidden="true"></i><span data-imu-live-label>${live ? 'LIVE・手機感測' : '等待啟動'}</span></span><span>相對 Pitch／Roll／Yaw</span></div><div class="detection-visual__frame imu-head-stage"><div class="imu-head-scene" data-imu-head-scene><div class="imu-head-model" data-imu-head><span class="imu-head-model__face"></span><span class="imu-head-model__ear imu-head-model__ear--left"></span><span class="imu-head-model__ear imu-head-model__ear--right"></span><span class="imu-head-model__nose"></span><span class="imu-head-model__neck"></span></div><span class="imu-axis imu-axis--pitch">Pitch</span><span class="imu-axis imu-axis--roll">Roll</span><span class="imu-axis imu-axis--yaw">Yaw</span></div><div class="imu-runtime-prompt" data-imu-prompt ${preparing && !paused ? 'hidden' : ''}><span class="material-symbols-rounded" aria-hidden="true">screen_rotation</span><strong data-imu-prompt-title>${runtime.status === 'error' ? '手機感測啟動需要處理' : paused ? '偵測已暫停' : '啟用手機姿態概念驗證'}</strong><p data-imu-prompt-copy>${runtime.error || (paused ? '感測 listener 已停止；繼續時會重新建立中立姿態。' : '請保持手機穩定約 3 秒建立基準。這不代表頭部穿戴式 IMU 已完成。')}</p><button class="button button--imu" type="button" data-action="${paused ? 'toggle-pause' : 'start-live-imu'}">${paused ? '重新啟用並校正' : runtime.status === 'error' ? '重新嘗試感測與校正' : '啟用感測器並校正'}</button></div><div class="detection-visual__paused" aria-hidden="${paused ? 'false' : 'true'}"><span class="material-symbols-rounded" aria-hidden="true">pause_circle</span><strong>偵測已暫停</strong><small>感測 listener 已停止</small></div></div><figcaption data-imu-caption>${live ? '手機內建感測器本機概念驗證；未連接耳機、智慧帽夾或其他頭部穿戴裝置。' : '此區啟動成功後才顯示真實手機相對姿態；穿戴式 IMU 仍是後續研究方向。'}</figcaption></figure>`;
+    const pitch = formatAngle(runtime.orientation?.pitch); const roll = formatAngle(runtime.orientation?.roll); const yaw = runtime.orientation?.yawAvailable ? formatAngle(runtime.orientation?.yaw) : '—';
+    return `<figure class="detection-visual detection-visual--imu imu-live-visual ${paused ? 'is-paused' : ''}" data-imu-visual data-runtime="${runtime.status || 'awaiting-permission'}"><div class="detection-visual__frame imu-head-stage"><div class="imu-live-heading"><span class="imu-live-heading__eyebrow"><i aria-hidden="true"></i><span data-imu-live-label>${live ? 'LIVE・手機感測' : '等待啟動'}</span></span><strong>姿態方向示意</strong><small>相對 Pitch／Roll／Yaw</small></div><span class="imu-concept-label">手機感測概念驗證</span><svg class="imu-motion-guides imu-motion-guides--rear" viewBox="0 0 1000 700" preserveAspectRatio="none" aria-hidden="true"><path class="imu-guide-path" d="M 292 360 C 390 312 646 304 798 360"/><path class="imu-guide-path" d="M 356 270 C 385 95 578 74 620 240"/></svg><div class="imu-head-canvas-host" data-imu-3d-canvas-host></div><svg class="imu-motion-guides imu-motion-guides--front" viewBox="0 0 1000 700" preserveAspectRatio="none" aria-hidden="true"><defs><marker id="imu-guide-arrow" viewBox="0 0 8 8" refX="6" refY="4" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M 0 0 L 8 4 L 0 8 Z"/></marker></defs><path class="imu-guide-path imu-guide-path--pitch" d="M 388 218 C 322 296 316 466 405 540" marker-start="url(#imu-guide-arrow)" marker-end="url(#imu-guide-arrow)"/><path class="imu-guide-path imu-guide-path--roll" d="M 356 270 C 385 95 578 74 620 240" marker-start="url(#imu-guide-arrow)" marker-end="url(#imu-guide-arrow)"/><path class="imu-guide-path imu-guide-path--yaw" d="M 292 360 C 330 382 354 390 386 395 M 620 394 C 674 388 744 378 798 360" marker-start="url(#imu-guide-arrow)" marker-end="url(#imu-guide-arrow)"/></svg><span class="imu-guide-label imu-guide-label--pitch"><small>Pitch</small><strong data-imu-guide-pitch>${pitch}</strong></span><span class="imu-guide-label imu-guide-label--roll"><small>Roll</small><strong data-imu-guide-roll>${roll}</strong></span><span class="imu-guide-label imu-guide-label--yaw"><small>Yaw</small><strong data-imu-guide-yaw>${yaw}</strong></span><section class="imu-compact-telemetry" aria-label="即時相對姿態"><span class="imu-compact-telemetry__title">即時資料・角度</span><dl><div><dt>Pitch（前後）</dt><dd data-imu-card-pitch>${pitch}</dd></div><div><dt>Roll（左右傾斜）</dt><dd data-imu-card-roll>${roll}</dd></div><div><dt>Yaw（左右轉向）</dt><dd data-imu-card-yaw>${yaw}</dd></div></dl></section><p class="imu-3d-error" data-imu-3d-error hidden>3D 姿態示意載入失敗；即時角度與監測控制仍可使用。</p><div class="imu-runtime-prompt" data-imu-prompt ${preparing && !paused ? 'hidden' : ''}><span class="material-symbols-rounded" aria-hidden="true">screen_rotation</span><strong data-imu-prompt-title>${runtime.status === 'error' ? '手機感測啟動需要處理' : paused ? '偵測已暫停' : '啟用手機姿態概念驗證'}</strong><p data-imu-prompt-copy>${runtime.error || (paused ? '感測 listener 已停止；繼續時會重新建立中立姿態。' : '請保持手機穩定約 3 秒建立基準。這不代表頭部穿戴式 IMU 已完成。')}</p><button class="button button--imu" type="button" data-action="${paused ? 'toggle-pause' : 'start-live-imu'}">${paused ? '重新啟用並校正' : runtime.status === 'error' ? '重新嘗試感測與校正' : '啟用感測器並校正'}</button></div><div class="detection-visual__paused" aria-hidden="${paused ? 'false' : 'true'}"><span class="material-symbols-rounded" aria-hidden="true">pause_circle</span><strong>偵測已暫停</strong><small>感測 listener 已停止</small></div></div><figcaption data-imu-caption>${live ? '手機內建感測器本機概念驗證；未連接耳機、智慧帽夾或其他頭部穿戴裝置。' : '此區啟動成功後才顯示真實手機相對姿態；穿戴式 IMU 仍是後續研究方向。'}</figcaption></figure>`;
   }
   const runtime = session?.aiRuntime || {}; const live = runtime.runtimeKind === 'mediapipe-web';
   const lastFrame = paused ? aiMonitoringEngine.getLastFrameDataUrl() : null;
@@ -291,8 +293,13 @@ export function updateAssessmentImuUi(container, session) {
   if (!container.querySelector('[data-imu-status-panel]')) return false;
   const runtime = session.imuRuntime || {}; const calibration = runtime.calibration || {}; const orientation = runtime.orientation || {};
   const live = runtime.runtimeKind === 'browser-sensors'; const paused = session.status === 'paused';
-  const head = container.querySelector('[data-imu-head]');
-  if (head) head.style.setProperty('--imu-transform', orientation.visualMatrix || IDENTITY_CSS_MATRIX3D);
+  const presentationQuaternion = toUserFacingModelQuaternion(orientation.visualQuaternion);
+  if (session.status === 'monitoring' && runtime.status === 'monitoring' && presentationQuaternion) {
+    imuHeadRenderer.resume();
+    imuHeadRenderer.setOrientation(presentationQuaternion);
+  } else {
+    imuHeadRenderer.pause();
+  }
   const visualPanel = container.querySelector('[data-imu-visual]');
   if (visualPanel) { visualPanel.dataset.runtime = runtime.status || 'awaiting-permission'; visualPanel.classList.toggle('is-paused', paused); }
   const prompt = container.querySelector('[data-imu-prompt]');
@@ -316,6 +323,12 @@ export function updateAssessmentImuUi(container, session) {
   setText(container, '[data-imu-pitch]', formatAngle(orientation.pitch));
   setText(container, '[data-imu-roll]', formatAngle(orientation.roll));
   setText(container, '[data-imu-yaw]', orientation.yawAvailable ? formatAngle(orientation.yaw) : '尚無資料');
+  setText(container, '[data-imu-guide-pitch]', formatAngle(orientation.pitch));
+  setText(container, '[data-imu-guide-roll]', formatAngle(orientation.roll));
+  setText(container, '[data-imu-guide-yaw]', orientation.yawAvailable ? formatAngle(orientation.yaw) : '—');
+  setText(container, '[data-imu-card-pitch]', formatAngle(orientation.pitch));
+  setText(container, '[data-imu-card-roll]', formatAngle(orientation.roll));
+  setText(container, '[data-imu-card-yaw]', orientation.yawAvailable ? formatAngle(orientation.yaw) : '—');
   setText(container, '[data-imu-cadence]', `${Number(runtime.sampleCadenceHz || 0).toFixed(1)} Hz`);
   setText(container, '[data-imu-monitoring-time]', formatDuration(session.activeDurationMs || 0));
   const error = container.querySelector('[data-imu-error]');
@@ -343,6 +356,7 @@ export function renderAssessmentPage(container) {
   let detachImuView = null;
   let imuViewFrame = null;
   let latestImuRuntime = null;
+  let imuRendererAttachToken = 0;
   const monitoringClockId = window.setInterval(() => {
     if (currentSession?.status === 'monitoring') {
       if (currentSession.activeMethod === 'ai') setText(container, '[data-ai-monitoring-time]', formatDuration(getMonitoringDurationMs()));
@@ -358,6 +372,16 @@ export function renderAssessmentPage(container) {
     detachImuView?.();
     if (imuViewFrame !== null) window.cancelAnimationFrame(imuViewFrame);
     imuViewFrame = null;
+    const rendererHost = container.querySelector('[data-imu-3d-canvas-host]');
+    const attachToken = ++imuRendererAttachToken;
+    if (rendererHost) {
+      void imuHeadRenderer.attach(rendererHost).then((loaded) => {
+        if (attachToken !== imuRendererAttachToken) return;
+        const visualError = container.querySelector('[data-imu-3d-error]');
+        if (visualError) visualError.hidden = loaded;
+        if (loaded && latestImuRuntime && currentSession?.activeMethod === 'imu') updateAssessmentImuUi(container, { ...currentSession, imuRuntime: latestImuRuntime });
+      });
+    }
     detachImuView = imuMonitoringEngine.attachView((runtime) => {
       latestImuRuntime = runtime;
       if (imuViewFrame !== null) return;
@@ -370,6 +394,8 @@ export function renderAssessmentPage(container) {
   const renderFull = () => {
     if (!currentSession || !currentContext) return;
     detachImuView?.(); detachImuView = null;
+    imuRendererAttachToken += 1;
+    imuHeadRenderer.detach();
     if (imuViewFrame !== null) window.cancelAnimationFrame(imuViewFrame);
     imuViewFrame = null;
     container.innerHTML = currentSession.status !== 'idle'
@@ -379,6 +405,7 @@ export function renderAssessmentPage(container) {
         : overviewView(currentContext, manualOpen, setupOpen);
     renderedViewKey = assessmentViewKey(currentSession, { manualOpen, setupOpen });
     renderedContextSignature = contextUiSignature(currentContext);
+    if (currentSession.activeMethod !== 'imu' && !['uninitialized', 'disposed'].includes(imuHeadRenderer.getStatus())) imuHeadRenderer.dispose();
     if (currentSession.activeMethod === 'ai' && currentSession.status === 'monitoring' && aiMonitoringEngine.hasActiveSession()) void attachActiveAiView();
     if (currentSession.activeMethod === 'imu' && currentSession.status !== 'idle') attachActiveImuView();
   };
@@ -506,6 +533,8 @@ export function renderAssessmentPage(container) {
   initializeContextEngine();
   const cleanupMonitoringRoute = () => {
     detachImuView?.(); detachImuView = null;
+    imuRendererAttachToken += 1;
+    imuHeadRenderer.detach();
     if (imuViewFrame !== null) window.cancelAnimationFrame(imuViewFrame);
     imuViewFrame = null; latestImuRuntime = null;
     cleanupAssessmentAiRoute({ session: currentSession });
