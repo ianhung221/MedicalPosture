@@ -30,7 +30,7 @@ import {
 import { aiMonitoringEngine } from '../ai/ai-monitoring-engine.js';
 import { DEFAULT_MODEL_VARIANT, MODEL_VARIANTS, POSTURE_STATES } from '../ai/mediapipe-config.js';
 import { imuMonitoringEngine } from '../imu/imu-monitoring-engine.js';
-import { mapOrientationToVisual } from '../imu/imu-visual-mapper.js';
+import { IDENTITY_CSS_MATRIX3D } from '../imu/imu-visual-mapper.js';
 import { getPlatformSettings } from '../state/platform-settings.js';
 
 const modeLabels = { smart: '智慧模式', ai: 'AI 坐姿辨識', imu: 'IMU 姿態感測' };
@@ -291,13 +291,8 @@ export function updateAssessmentImuUi(container, session) {
   if (!container.querySelector('[data-imu-status-panel]')) return false;
   const runtime = session.imuRuntime || {}; const calibration = runtime.calibration || {}; const orientation = runtime.orientation || {};
   const live = runtime.runtimeKind === 'browser-sensors'; const paused = session.status === 'paused';
-  const visual = mapOrientationToVisual(orientation);
   const head = container.querySelector('[data-imu-head]');
-  if (head) {
-    head.style.setProperty('--imu-pitch', `${visual.pitch}deg`);
-    head.style.setProperty('--imu-roll', `${visual.roll}deg`);
-    head.style.setProperty('--imu-yaw', `${visual.yaw}deg`);
-  }
+  if (head) head.style.setProperty('--imu-transform', orientation.visualMatrix || IDENTITY_CSS_MATRIX3D);
   const visualPanel = container.querySelector('[data-imu-visual]');
   if (visualPanel) { visualPanel.dataset.runtime = runtime.status || 'awaiting-permission'; visualPanel.classList.toggle('is-paused', paused); }
   const prompt = container.querySelector('[data-imu-prompt]');

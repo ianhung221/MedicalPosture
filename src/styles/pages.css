@@ -1199,7 +1199,7 @@
 .detection-visual--imu .detection-visual__frame { aspect-ratio: 1586 / 990; }
 .imu-head-stage { min-height: 390px; perspective: 900px; background: radial-gradient(circle at 50% 40%, #fff 0, #f6f4ff 48%, #ece9f9 100%); }
 .imu-head-scene { position: relative; display: grid; place-items: center; width: min(88%, 560px); height: 330px; transform-style: preserve-3d; }
-.imu-head-model { --imu-pitch: 0deg; --imu-roll: 0deg; --imu-yaw: 0deg; position: relative; width: 155px; height: 210px; transform: rotateX(var(--imu-pitch)) rotateY(var(--imu-yaw)) rotateZ(var(--imu-roll)); transform-style: preserve-3d; transition: transform .09s linear; }
+.imu-head-model { --imu-transform: matrix3d(1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1); position: relative; width: 155px; height: 210px; transform: var(--imu-transform); transform-style: preserve-3d; transition: transform .09s linear; }
 .imu-head-model__face { position: absolute; inset: 0 14px 35px; border: 1px solid rgb(85 64 173 / 24%); border-radius: 49% 49% 44% 44%; background: linear-gradient(135deg, #fff 8%, #e7e3f5 68%, #d4cee9); box-shadow: inset -18px -10px 28px rgb(85 64 173 / 10%), 0 22px 40px rgb(65 54 113 / 15%); transform: translateZ(18px); }
 .imu-head-model__face::before { content: ''; position: absolute; left: 32px; right: 32px; top: 83px; height: 2px; border-radius: 50%; background: rgb(85 64 173 / 18%); box-shadow: 0 38px 0 rgb(85 64 173 / 12%); }
 .imu-head-model__ear { position: absolute; top: 76px; width: 22px; height: 43px; border: 1px solid rgb(85 64 173 / 20%); border-radius: 50%; background: #e7e3f3; transform: translateZ(5px); }

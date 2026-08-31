@@ -12,7 +12,7 @@ const initialImuRuntime = () => ({
   status: 'awaiting-permission', runtimeKind: 'pending', error: null,
   permission: { motion: 'unknown', orientation: 'unknown' },
   calibration: { active: false, completed: false, elapsedMs: 0, validSamples: 0, stable: false, baseline: null },
-  orientation: { pitch: 0, roll: 0, yaw: 0, yawAvailable: false },
+  orientation: { pitch: 0, roll: 0, yaw: 0, yawAvailable: false, singular: false, visualMatrix: 'matrix3d(1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1)' },
   sampleCadenceHz: 0, orientationSampleCount: 0, motionSampleCount: 0, lastUpdateAt: null,
 });
 

@@ -5,6 +5,8 @@ export const IMU_CONFIG = Object.freeze({
   calibrationMinSamples: 30,
   pitchRollMaxStdDev: 2.5,
   yawMaxStdDev: 6,
+  calibrationMaxAngularRmsDeg: 3,
+  calibrationMaxAngularDeviationDeg: 8,
   smoothingAlpha: 0.18,
   telemetryIntervalMs: 100,
   visualClampDeg: 55,

@@ -1,6 +1,24 @@
-import { IMU_CONFIG } from './imu-config.js';
-const clamp = (value, limit) => Math.max(-limit, Math.min(limit, value));
-export function mapOrientationToVisual(orientation, { pitchSign = -1, rollSign = 1, yawSign = -1, clampDeg = IMU_CONFIG.visualClampDeg } = {}) {
-  if (!orientation) return { pitch: 0, roll: 0, yaw: 0 };
-  return { pitch: clamp((orientation.pitch || 0) * pitchSign, clampDeg), roll: clamp((orientation.roll || 0) * rollSign, clampDeg), yaw: clamp((orientation.yaw || 0) * yawSign, clampDeg) };
+import { quaternionToRotationMatrix } from './orientation-normalizer.js';
+
+export const IDENTITY_CSS_MATRIX3D = 'matrix3d(1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1)';
+
+const clean = (value) => Math.abs(value) < 1e-12 ? 0 : Number(value.toFixed(10));
+
+export function quaternionToCssMatrix3d(quaternion) {
+  const device = quaternionToRotationMatrix(quaternion);
+  if (!device) return IDENTITY_CSS_MATRIX3D;
+  // Device +y points to the top edge; CSS +y points down. S * R * S changes basis.
+  const signs = [1, -1, 1];
+  const css = device.map((row, rowIndex) => row.map((value, columnIndex) => signs[rowIndex] * value * signs[columnIndex]));
+  const values = [
+    css[0][0], css[1][0], css[2][0], 0,
+    css[0][1], css[1][1], css[2][1], 0,
+    css[0][2], css[1][2], css[2][2], 0,
+    0, 0, 0, 1,
+  ].map(clean);
+  return `matrix3d(${values.join(',')})`;
+}
+
+export function mapOrientationToVisual(quaternion) {
+  return { matrix3d: quaternionToCssMatrix3d(quaternion) };
 }
