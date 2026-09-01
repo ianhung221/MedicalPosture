@@ -1,8 +1,8 @@
-const CACHE_NAME = 'posture-health-shell-v13';
+const CACHE_NAME = 'posture-health-shell-v14';
 const CACHE_PREFIX = 'posture-health-shell-';
 const AI_CACHE_NAME = 'posture-ai-assets-v1';
 const AI_CACHE_PREFIX = 'posture-ai-assets-';
-const THREE_D_CACHE_NAME = 'posture-3d-assets-v1';
+const THREE_D_CACHE_NAME = 'posture-3d-assets-v2';
 const THREE_D_CACHE_PREFIX = 'posture-3d-assets-';
 const APP_SHELL = [
   './', './index.html', './manifest.webmanifest', './src/app.js', './src/styles/main.css',

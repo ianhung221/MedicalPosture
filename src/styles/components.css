@@ -281,7 +281,9 @@ select:focus-visible {
 }
 
 @media (max-width: 430px) {
-  .monitoring-dock__summary { min-width: 0; }
+  .monitoring-dock__summary { flex: 0 0 auto; min-width: 154px; }
+  .monitoring-dock__summary > span:last-child { min-width: 0; }
+  .monitoring-dock__summary strong { white-space: nowrap; }
   .monitoring-dock__summary small { display: none; }
   .monitoring-panel__facts { grid-template-columns: 1fr; }
   .monitoring-confirm__actions { flex-direction: column; }

@@ -745,7 +745,8 @@
 .active-detection-header h1 { font-size: clamp(1.25rem, 3vw, 1.65rem); }
 .active-detection-header p { font-size: .73rem; }
 .session-state { display: inline-flex; align-items: center; gap: .45rem; padding: .4rem .65rem; border-radius: 999px; color: var(--green-dark); background: var(--green-soft); font-size: .68rem; font-weight: 800; }
-.session-state > span { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+.session-state > span[aria-hidden="true"] { flex: 0 0 7px; width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+.session-state > span:not([aria-hidden]) { white-space: nowrap; }
 .session-state.is-paused { color: var(--orange-dark); background: var(--orange-soft); }
 .session-state.is-paused > span { background: var(--orange); }
 .truth-note { margin-bottom: 1rem; color: var(--brand-dark); border-color: var(--brand-border); background: var(--brand-soft); }
@@ -1187,6 +1188,9 @@
 .smart-decision-strip__result { border: 1px solid var(--brand-border); }
 
 .live-layout--media { align-items: start; }
+.live-layout--media > .detection-visual,
+.live-layout--media > .live-status-panel,
+.live-layout--media > .imu-status-panel { min-width: 0; }
 .detection-visual { margin: 0; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius); background: #fff; }
 .detection-visual--ai { border-color: var(--ai-border); }
 .detection-visual--imu { border-color: var(--imu-border); }
@@ -1217,15 +1221,21 @@
 .imu-guide-label--pitch { left: 25%; top: 59%; text-align: right; }
 .imu-guide-label--roll { left: 48%; top: 15%; }
 .imu-guide-label--yaw { right: 23%; top: 49%; }
-.imu-compact-telemetry { position: absolute; z-index: 5; right: 2.3%; bottom: 3.2%; width: min(43%, 280px); padding: .58rem .68rem .62rem; border: 1px solid rgb(112 76 224 / 17%); border-radius: 12px; color: #3d326c; background: rgb(255 255 255 / 88%); box-shadow: 0 9px 28px rgb(76 59 139 / 8%); backdrop-filter: blur(7px); }
+.imu-compact-telemetry { position: absolute; z-index: 5; right: clamp(10px, 2.3%, 18px); bottom: clamp(10px, 3.2%, 18px); width: clamp(238px, 43%, 280px); max-width: calc(100% - 20px); padding: .58rem .68rem .62rem; border: 1px solid rgb(112 76 224 / 17%); border-radius: 12px; color: #3d326c; background: rgb(255 255 255 / 88%); box-shadow: 0 9px 28px rgb(76 59 139 / 8%); backdrop-filter: blur(7px); }
 .imu-compact-telemetry__title { display: block; padding-bottom: .38rem; border-bottom: 1px solid rgb(112 76 224 / 12%); color: var(--imu-dark); font-size: .54rem; font-weight: 800; }
 .imu-compact-telemetry dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: .4rem 0 0; }
 .imu-compact-telemetry dl > div { min-width: 0; padding: 0 .42rem; border-left: 1px solid rgb(112 76 224 / 11%); }
 .imu-compact-telemetry dl > div:first-child { padding-left: 0; border-left: 0; }
 .imu-compact-telemetry dt { overflow: hidden; color: var(--ink-soft); font-size: clamp(.45rem, 1vw, .54rem); font-weight: 700; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
 .imu-compact-telemetry dd { margin: .18rem 0 0; color: var(--imu-dark); font-size: clamp(.75rem, 1.85vw, .98rem); font-weight: 700; }
-.imu-3d-error { position: absolute; z-index: 6; left: 3%; right: 3%; bottom: 2.5%; margin: 0; padding: .55rem .7rem; border: 1px solid var(--orange-border); border-radius: 10px; color: var(--orange-dark); background: rgb(255 248 236 / 94%); font-size: .58rem; text-align: center; }
+.imu-3d-error { position: absolute; z-index: 6; left: 3%; bottom: 3.2%; display: grid; gap: .15rem; width: min(43%, 280px); margin: 0; padding: .55rem .7rem; border: 1px solid var(--orange-border); border-radius: 10px; color: var(--orange-dark); background: rgb(255 248 236 / 94%); font-size: .58rem; line-height: 1.4; }
 .imu-3d-error[hidden] { display: none; }
+.imu-3d-error > span { color: var(--ink-soft); }
+.imu-3d-error details { margin-top: .15rem; }
+.imu-3d-error summary { cursor: pointer; font-weight: 800; }
+.imu-3d-error code { display: inline-block; margin: .25rem .3rem 0 0; color: var(--orange-dark); font-size: .54rem; }
+.imu-3d-error details > span { color: var(--muted); font-size: .52rem; }
+.imu-3d-error details p { margin: .2rem 0 0; overflow-wrap: anywhere; color: var(--ink-soft); font-size: .52rem; line-height: 1.35; }
 .imu-runtime-prompt { position: absolute; inset: 0; z-index: 10; display: grid; place-content: center; justify-items: center; gap: .45rem; padding: 1rem; color: var(--ink); background: rgb(249 248 253 / 88%); text-align: center; backdrop-filter: blur(5px); }
 .imu-runtime-prompt[hidden] { display: none; }
 .imu-runtime-prompt > .material-symbols-rounded { color: var(--imu); font-size: 2.4rem; }
@@ -1287,17 +1297,18 @@
   .smart-mode-preflight__actions .text-button { width: 100%; justify-content: center; }
   .detection-visual__bar { align-items: flex-start; flex-direction: column; gap: .2rem; }
   .alert-showcase .section-title-row { align-items: flex-start; flex-direction: column; }
-  .imu-head-stage { min-height: 360px; }
+  .imu-head-stage { min-height: 440px; }
   .imu-live-heading { left: 4%; top: 4%; }
   .imu-concept-label { right: 4%; top: 4%; max-width: 42%; text-align: center; }
-  .imu-head-canvas-host { inset: 11% 2% 4%; }
+  .imu-head-canvas-host { inset: 12% 1% 22%; }
   .imu-guide-label--pitch { left: 17%; top: 58%; }
   .imu-guide-label--roll { left: 47%; top: 17%; }
   .imu-guide-label--yaw { right: 13%; top: 48%; }
-  .imu-compact-telemetry { right: 3%; bottom: 3%; width: 47%; padding: .46rem .5rem .5rem; }
+  .imu-compact-telemetry { right: 12px; bottom: 12px; left: 12px; width: auto; max-width: none; padding: .48rem .55rem .52rem; }
   .imu-compact-telemetry dl > div { padding: 0 .25rem; }
   .imu-compact-telemetry dt { font-size: .43rem; }
   .imu-compact-telemetry dd { font-size: .72rem; }
+  .imu-3d-error { top: 28%; right: 12px; bottom: auto; left: 12px; width: auto; max-width: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
