@@ -81,6 +81,7 @@ export function createImuHeadRenderer({
   let latestGuideTelemetry = { pitch: 0, roll: 0, yaw: 0 };
   let guideLayoutListener = null;
   let framingRadius = 1.2;
+  let framingTarget = { x: 0, y: 0.72, z: 0 };
   let paused = false;
   let contextLost = false;
   let lastError = null;
@@ -119,8 +120,8 @@ export function createImuHeadRenderer({
       renderer.setSize(width, height, false);
       camera.aspect = width / height;
       const framing = computeGuideCameraFraming({ radius: framingRadius, aspect: camera.aspect, verticalFovDegrees: camera.fov || 30 });
-      camera.position.set(0, 0.36, framing.distance);
-      camera.lookAt(0, 0.35, 0);
+      camera.position.set(framingTarget.x, framingTarget.y, framingTarget.z + framing.distance);
+      camera.lookAt(framingTarget.x, framingTarget.y, framingTarget.z);
       camera.far = Math.max(20, framing.distance + framingRadius * 1.5);
       if (framingRoot) framingRoot.position.set(framing.offsetX, 0, 0);
       camera.updateProjectionMatrix();
@@ -149,6 +150,7 @@ export function createImuHeadRenderer({
     }
     try {
       orientationRoot.quaternion.set(latestQuaternion.x, latestQuaternion.y, latestQuaternion.z, latestQuaternion.w).normalize();
+      guideRig?.applyOrientation(latestQuaternion);
       renderer.render(scene, camera);
       renderCount += 1;
       emitGuideLayout(size);
@@ -281,17 +283,20 @@ export function createImuHeadRenderer({
           const modelBounds = new THREE.Box3().setFromObject(loadingModelRoot);
           guideRig = createImuSpatialGuideRig(THREE, { bounds: modelBounds });
           guideProjectionVectors = Object.fromEntries(Object.keys(guideRig.anchors).map((axis) => [axis, new THREE.Vector3()]));
-          orientationRoot.add(guideRig.root);
+          framingRoot.add(guideRig.root);
+          guideRig.applyOrientation(latestQuaternion);
           guideRig.applyEmphasis(latestGuideTelemetry);
-          orientationRoot.updateWorldMatrix?.(true, true);
-          const combinedBounds = new THREE.Box3().setFromObject(orientationRoot);
-          const corners = [];
-          for (const x of [combinedBounds.min.x, combinedBounds.max.x]) {
-            for (const y of [combinedBounds.min.y, combinedBounds.max.y]) {
-              for (const z of [combinedBounds.min.z, combinedBounds.max.z]) corners.push(Math.hypot(x, y, z));
-            }
-          }
-          framingRadius = Math.max(0.1, ...corners);
+          const headMetrics = guideRig.getHeadMetrics();
+          framingRadius = guideRig.getFramingRadius();
+          framingTarget = { ...headMetrics.pivot };
+          // Move the rotation origin from the bust origin to the visual head center
+          // while preserving the model's neutral world-space placement.
+          orientationRoot.position.set(headMetrics.pivot.x, headMetrics.pivot.y, headMetrics.pivot.z);
+          modelRoot.position.set(
+            modelRoot.position.x - headMetrics.pivot.x,
+            modelRoot.position.y - headMetrics.pivot.y,
+            modelRoot.position.z - headMetrics.pivot.z,
+          );
           guideCreationCount += 1;
         } catch (error) {
           throw initializationError(IMU_3D_ERROR_CODES.MODEL_INIT_FAILED, 'model-init', error);
@@ -408,6 +413,7 @@ export function createImuHeadRenderer({
     guideProjectionVectors = null;
     guideLayoutListener = null;
     framingRadius = 1.2;
+    framingTarget = { x: 0, y: 0.72, z: 0 };
     contextLost = false;
     paused = false;
   };
@@ -424,7 +430,7 @@ export function createImuHeadRenderer({
     dispose,
     getStatus: () => status,
     getError: () => lastError,
-    getDiagnostics: () => ({ status, renderCount, attachCount, modelLoadCount, contextCount, guideCreationCount, guideResourceCount: guideRig?.getResourceCount?.() || 0, pendingFrame: pendingFrame !== null, attached: Boolean(host), paused, contextLost, modelLoadMs, error: lastError }),
+    getDiagnostics: () => ({ status, renderCount, attachCount, modelLoadCount, contextCount, guideCreationCount, guideResourceCount: guideRig?.getResourceCount?.() || 0, guideOrientationApplyCount: guideRig?.getOrientationApplyCount?.() || 0, framingRadius, framingTarget: { ...framingTarget }, pendingFrame: pendingFrame !== null, attached: Boolean(host), paused, contextLost, modelLoadMs, error: lastError }),
   };
 }
 
