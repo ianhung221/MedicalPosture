@@ -1,3 +1,9 @@
+import {
+  clampGuideLabelProjection,
+  computeGuideCameraFraming,
+  createImuSpatialGuideRig,
+} from './imu-spatial-guides.js';
+
 const THREE_MODULE_URL = new URL('../../assets/vendor/three-r185/three.module.min.js', import.meta.url).href;
 const GLTF_LOADER_URL = new URL('../../assets/vendor/three-r185/addons/loaders/GLTFLoader.js', import.meta.url).href;
 const MODEL_URL = new URL('../../assets/models/imu-neutral-head.glb', import.meta.url).href;
@@ -63,12 +69,18 @@ export function createImuHeadRenderer({
   let scene = null;
   let camera = null;
   let renderer = null;
+  let framingRoot = null;
   let orientationRoot = null;
   let modelRoot = null;
+  let guideRig = null;
+  let guideProjectionVectors = null;
   let host = null;
   let resizeObserver = null;
   let pendingFrame = null;
   let latestQuaternion = { ...IDENTITY_QUATERNION };
+  let latestGuideTelemetry = { pitch: 0, roll: 0, yaw: 0 };
+  let guideLayoutListener = null;
+  let framingRadius = 1.2;
   let paused = false;
   let contextLost = false;
   let lastError = null;
@@ -77,6 +89,7 @@ export function createImuHeadRenderer({
   let modelLoadCount = 0;
   let contextCount = 0;
   let modelLoadMs = 0;
+  let guideCreationCount = 0;
   let generation = 0;
 
   const reportError = (error) => {
@@ -105,9 +118,27 @@ export function createImuHeadRenderer({
     if (changed) {
       renderer.setSize(width, height, false);
       camera.aspect = width / height;
+      const framing = computeGuideCameraFraming({ radius: framingRadius, aspect: camera.aspect, verticalFovDegrees: camera.fov || 30 });
+      camera.position.set(0, 0.36, framing.distance);
+      camera.lookAt(0, 0.35, 0);
+      camera.far = Math.max(20, framing.distance + framingRadius * 1.5);
+      if (framingRoot) framingRoot.position.set(framing.offsetX, 0, 0);
       camera.updateProjectionMatrix();
     }
     return { width, height, changed };
+  };
+
+  const emitGuideLayout = (size) => {
+    if (!guideLayoutListener || !guideRig || !camera || !scene || size.width <= 0 || size.height <= 0) return;
+    scene.updateMatrixWorld?.(true);
+    const layout = {};
+    Object.entries(guideRig.anchors).forEach(([axis, anchor]) => {
+      const world = guideProjectionVectors[axis];
+      anchor.getWorldPosition(world);
+      world.project(camera);
+      layout[axis] = clampGuideLabelProjection(world, size.width, size.height);
+    });
+    guideLayoutListener(Object.freeze(layout));
   };
 
   const renderNow = ({ first = false } = {}) => {
@@ -120,6 +151,7 @@ export function createImuHeadRenderer({
       orientationRoot.quaternion.set(latestQuaternion.x, latestQuaternion.y, latestQuaternion.z, latestQuaternion.w).normalize();
       renderer.render(scene, camera);
       renderCount += 1;
+      emitGuideLayout(size);
       if (first) status = 'ready';
       return true;
     } catch (error) {
@@ -210,10 +242,12 @@ export function createImuHeadRenderer({
           const fillLight = new THREE.DirectionalLight(0xbcb1ff, 0.8);
           fillLight.position.set(3, 0.8, 2.2);
           scene.add(fillLight);
+          framingRoot = new THREE.Group();
           orientationRoot = new THREE.Group();
           modelRoot = new THREE.Group();
           orientationRoot.add(modelRoot);
-          scene.add(orientationRoot);
+          framingRoot.add(orientationRoot);
+          scene.add(framingRoot);
         } catch (error) {
           throw initializationError(IMU_3D_ERROR_CODES.MODEL_INIT_FAILED, 'scene-init', error);
         }
@@ -243,6 +277,22 @@ export function createImuHeadRenderer({
           });
           loadingModelRoot.add(gltf.scene);
           loadingModelRoot.position.set(0, -0.12, 0);
+          orientationRoot.updateWorldMatrix?.(true, true);
+          const modelBounds = new THREE.Box3().setFromObject(loadingModelRoot);
+          guideRig = createImuSpatialGuideRig(THREE, { bounds: modelBounds });
+          guideProjectionVectors = Object.fromEntries(Object.keys(guideRig.anchors).map((axis) => [axis, new THREE.Vector3()]));
+          orientationRoot.add(guideRig.root);
+          guideRig.applyEmphasis(latestGuideTelemetry);
+          orientationRoot.updateWorldMatrix?.(true, true);
+          const combinedBounds = new THREE.Box3().setFromObject(orientationRoot);
+          const corners = [];
+          for (const x of [combinedBounds.min.x, combinedBounds.max.x]) {
+            for (const y of [combinedBounds.min.y, combinedBounds.max.y]) {
+              for (const z of [combinedBounds.min.z, combinedBounds.max.z]) corners.push(Math.hypot(x, y, z));
+            }
+          }
+          framingRadius = Math.max(0.1, ...corners);
+          guideCreationCount += 1;
         } catch (error) {
           throw initializationError(IMU_3D_ERROR_CODES.MODEL_INIT_FAILED, 'model-init', error);
         }
@@ -292,6 +342,7 @@ export function createImuHeadRenderer({
     resizeObserver = null;
     renderer?.domElement?.remove?.();
     host = null;
+    guideLayoutListener = null;
     return status === 'ready';
   };
 
@@ -312,6 +363,22 @@ export function createImuHeadRenderer({
     return true;
   };
 
+  const setGuideTelemetry = (telemetry) => {
+    latestGuideTelemetry = {
+      pitch: Number.isFinite(telemetry?.pitch) ? telemetry.pitch : 0,
+      roll: Number.isFinite(telemetry?.roll) ? telemetry.roll : 0,
+      yaw: Number.isFinite(telemetry?.yaw) ? telemetry.yaw : 0,
+    };
+    if (guideRig?.applyEmphasis(latestGuideTelemetry)) scheduleRender();
+    return guideRig?.getEmphasis?.() || null;
+  };
+
+  const setGuideLayoutListener = (listener) => {
+    guideLayoutListener = typeof listener === 'function' ? listener : null;
+    if (guideLayoutListener) scheduleRender();
+    return () => { if (guideLayoutListener === listener) guideLayoutListener = null; };
+  };
+
   const dispose = () => {
     generation += 1;
     detach();
@@ -324,6 +391,7 @@ export function createImuHeadRenderer({
     });
     geometries.forEach((geometry) => geometry.dispose?.());
     materials.forEach((material) => material.dispose?.());
+    guideRig?.dispose?.();
     renderer?.domElement?.removeEventListener?.('webglcontextlost', handleContextLost);
     renderer?.domElement?.removeEventListener?.('webglcontextrestored', handleContextRestored);
     renderer?.dispose?.();
@@ -333,8 +401,13 @@ export function createImuHeadRenderer({
     scene = null;
     camera = null;
     renderer = null;
+    framingRoot = null;
     orientationRoot = null;
     modelRoot = null;
+    guideRig = null;
+    guideProjectionVectors = null;
+    guideLayoutListener = null;
+    framingRadius = 1.2;
     contextLost = false;
     paused = false;
   };
@@ -346,10 +419,12 @@ export function createImuHeadRenderer({
     pause,
     resume,
     setOrientation,
+    setGuideTelemetry,
+    setGuideLayoutListener,
     dispose,
     getStatus: () => status,
     getError: () => lastError,
-    getDiagnostics: () => ({ status, renderCount, attachCount, modelLoadCount, contextCount, pendingFrame: pendingFrame !== null, attached: Boolean(host), paused, contextLost, modelLoadMs, error: lastError }),
+    getDiagnostics: () => ({ status, renderCount, attachCount, modelLoadCount, contextCount, guideCreationCount, guideResourceCount: guideRig?.getResourceCount?.() || 0, pendingFrame: pendingFrame !== null, attached: Boolean(host), paused, contextLost, modelLoadMs, error: lastError }),
   };
 }
 
