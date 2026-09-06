@@ -1210,7 +1210,7 @@
 .imu-concept-label { position: absolute; z-index: 5; right: 3.2%; top: 4%; padding: .36rem .62rem; border-radius: 999px; color: var(--imu-dark); background: rgb(239 235 255 / 90%); font-size: .54rem; font-weight: 800; }
 .imu-head-canvas-host { position: absolute; z-index: 2; inset: 7% 8% 3%; pointer-events: none; }
 .imu-head-canvas { display: block; width: 100%; height: 100%; }
-.imu-guide-label { --imu-guide-x: 50%; --imu-guide-y: 50%; position: absolute; z-index: 5; left: 0; top: 0; display: grid; min-width: 52px; max-width: calc(100% - 16px); box-sizing: border-box; gap: .02rem; color: var(--imu-dark); line-height: 1; text-align: center; white-space: nowrap; opacity: 0; pointer-events: none; transform: translate3d(var(--imu-guide-x), var(--imu-guide-y), 0) translate(-50%, -50%); transition: opacity .16s ease; }
+.imu-guide-label { --imu-guide-x: 50%; --imu-guide-y: 50%; --imu-guide-anchor-x: -50%; --imu-guide-anchor-y: -50%; position: absolute; z-index: 5; left: 0; top: 0; display: grid; min-width: 52px; max-width: calc(100% - 16px); box-sizing: border-box; gap: .02rem; color: var(--imu-dark); line-height: 1; text-align: center; white-space: nowrap; opacity: 0; pointer-events: none; transform: translate3d(var(--imu-guide-x), var(--imu-guide-y), 0) translate(var(--imu-guide-anchor-x), var(--imu-guide-anchor-y)); transition: opacity .16s ease; }
 .imu-guide-label.is-positioned { opacity: 1; }
 .imu-guide-label.is-positioned.is-subdued { opacity: .58; }
 .imu-guide-label small { font-size: clamp(.52rem, 1.35vw, .62rem); font-weight: 800; }

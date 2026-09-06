@@ -8,10 +8,12 @@ export const IMU_GUIDE_VISUAL_CONFIG = Object.freeze({
   headWidthToHeightRatio: 0.82,
   headDepthToHeightRatio: 0.94,
   framingRadiusMultiplier: 1.45,
+  framingHeadWidthMultiplier: 0.85,
   thickTubeMultiplier: 1.55,
   neutralGapDegrees: 2.5,
   labelFootprintInsetX: 8,
   labelFootprintInsetY: 6,
+  labelAnchorGap: 6,
 });
 
 export const HEAD_CANONICAL_BASIS = Object.freeze({
@@ -98,28 +100,47 @@ export function clampGuideLabelProjection(ndc, width, height, {
 export function containGuideLabelFootprint(point, width, height, {
   labelWidth = 0,
   labelHeight = 0,
-  anchorX = 0.5,
-  anchorY = 0.5,
+  anchorX,
+  anchorY,
   insetX = IMU_GUIDE_VISUAL_CONFIG.labelFootprintInsetX,
   insetY = IMU_GUIDE_VISUAL_CONFIG.labelFootprintInsetY,
 } = {}) {
   if (!point?.valid || ![point.x, point.y, width, height, labelWidth, labelHeight].every(Number.isFinite) || width <= 0 || height <= 0) {
     return Object.freeze({ x: 0, y: 0, subdued: true, valid: false });
   }
-  const safeAnchorX = Math.min(1, Math.max(0, finite(anchorX, 0.5)));
-  const safeAnchorY = Math.min(1, Math.max(0, finite(anchorY, 0.5)));
   const safeLabelWidth = Math.min(width, Math.max(0, labelWidth));
   const safeLabelHeight = Math.min(height, Math.max(0, labelHeight));
+  const gap = IMU_GUIDE_VISUAL_CONFIG.labelAnchorGap;
+  const spaceLeft = point.x - insetX;
+  const spaceRight = width - insetX - point.x;
+  const preferredHorizontal = point.x <= width / 2 ? 'right' : 'left';
+  const fitsRight = spaceRight >= safeLabelWidth + gap;
+  const fitsLeft = spaceLeft >= safeLabelWidth + gap;
+  const horizontal = Number.isFinite(anchorX)
+    ? (anchorX === 0 ? 'right' : anchorX === 1 ? 'left' : 'center')
+    : preferredHorizontal === 'right'
+      ? (fitsRight ? 'right' : fitsLeft ? 'left' : 'center')
+      : (fitsLeft ? 'left' : fitsRight ? 'right' : 'center');
+  const safeAnchorX = Number.isFinite(anchorX) ? Math.min(1, Math.max(0, anchorX)) : horizontal === 'right' ? 0 : horizontal === 'left' ? 1 : 0.5;
+  const centeredTop = point.y - safeLabelHeight / 2;
+  const centeredBottom = point.y + safeLabelHeight / 2;
+  const vertical = Number.isFinite(anchorY) ? 'explicit' : centeredTop < insetY ? 'below' : centeredBottom > height - insetY ? 'above' : 'center';
+  const safeAnchorY = Number.isFinite(anchorY) ? Math.min(1, Math.max(0, anchorY)) : vertical === 'below' ? 0 : vertical === 'above' ? 1 : 0.5;
+  const proposedX = point.x + (horizontal === 'right' ? gap : horizontal === 'left' ? -gap : 0);
+  const proposedY = point.y + (vertical === 'below' ? gap : vertical === 'above' ? -gap : 0);
   const minX = Math.min(width / 2, insetX + safeLabelWidth * safeAnchorX);
   const maxX = Math.max(minX, width - insetX - safeLabelWidth * (1 - safeAnchorX));
   const minY = Math.min(height / 2, insetY + safeLabelHeight * safeAnchorY);
   const maxY = Math.max(minY, height - insetY - safeLabelHeight * (1 - safeAnchorY));
-  const x = Math.min(maxX, Math.max(minX, point.x));
-  const y = Math.min(maxY, Math.max(minY, point.y));
+  const x = Math.min(maxX, Math.max(minX, proposedX));
+  const y = Math.min(maxY, Math.max(minY, proposedY));
   return Object.freeze({
     x,
     y,
-    subdued: Boolean(point.subdued || x !== point.x || y !== point.y),
+    anchorX: safeAnchorX,
+    anchorY: safeAnchorY,
+    side: horizontal,
+    subdued: Boolean(point.subdued || x !== proposedX || y !== proposedY),
     valid: true,
   });
 }
@@ -169,31 +190,32 @@ export function deriveHeadVisualMetrics(bounds) {
     y: headBottom + headHeight * 0.5,
     z: (min.z + max.z) / 2 + headDepth * 0.035,
   });
-  const radii = Object.freeze({
-    pitch: Math.max(headHeight * 0.48, headDepth * 0.51),
-    roll: Math.max(headWidth * 0.55, headHeight * 0.48),
-    yaw: Math.max(headWidth * 0.55, headDepth * 0.49),
-  });
-  const framingRadius = Math.max(radii.pitch, radii.roll, radii.yaw) * IMU_GUIDE_VISUAL_CONFIG.framingRadiusMultiplier;
+  const compactRadius = Math.min(headWidth * 0.54, headHeight * 0.46, headDepth * 0.48);
+  const radii = Object.freeze({ pitch: compactRadius, roll: compactRadius, yaw: compactRadius });
+  const framingRadius = Math.max(
+    Math.max(radii.pitch, radii.roll, radii.yaw) * IMU_GUIDE_VISUAL_CONFIG.framingRadiusMultiplier,
+    headWidth * IMU_GUIDE_VISUAL_CONFIG.framingHeadWidthMultiplier,
+  );
   return Object.freeze({ fullWidth, fullHeight, fullDepth, headBottom, headWidth, headHeight, headDepth, pivot, radii, framingRadius });
 }
 
-function createCircularArcCurve(THREE, axis, radius, startDegrees, endDegrees, offset = {}) {
+function createCircularArcCurve(THREE, axis, radius, startDegrees, endDegrees, presentation = {}) {
   const start = startDegrees * Math.PI / 180;
   const sweep = (endDegrees - startDegrees) * Math.PI / 180;
-  const offsetX = finite(offset.x);
-  const offsetY = finite(offset.y);
-  const offsetZ = finite(offset.z);
-  const presentationBow = finite(offset.presentationBow);
+  const offsetX = finite(presentation.x);
+  const offsetY = finite(presentation.y);
+  const offsetZ = finite(presentation.z);
+  const tilt = finite(presentation.tiltDegrees) * Math.PI / 180;
+  const tiltCosine = Math.cos(tilt);
+  const tiltSine = Math.sin(tilt);
   class CircularArcCurve extends THREE.Curve {
     getPoint(t, target = new THREE.Vector3()) {
       const angle = start + sweep * t;
       const cosine = Math.cos(angle) * radius;
       const sine = Math.sin(angle) * radius;
-      const bow = Math.sin(Math.PI * t) * presentationBow;
-      if (axis === 'pitch') return target.set(offsetX + bow, cosine + offsetY, sine + offsetZ);
+      if (axis === 'pitch') return target.set(offsetX + sine * tiltSine, cosine + offsetY, offsetZ + sine * tiltCosine);
       if (axis === 'roll') return target.set(cosine + offsetX, sine + offsetY, offsetZ);
-      return target.set(cosine + offsetX, offsetY + bow, sine + offsetZ);
+      return target.set(cosine + offsetX, offsetY - sine * tiltSine, offsetZ + sine * tiltCosine);
     }
   }
   return new CircularArcCurve();
@@ -241,7 +263,7 @@ export function createImuSpatialGuideRig(THREE, { bounds } = {}) {
       negative: [90 - neutralGap, 28],
       positive: [90 + neutralGap, 152],
       neutralBoundaries: [90],
-      offset: { x: -metrics.headWidth * 0.17, z: metrics.headDepth * 0.08, presentationBow: metrics.headWidth * 0.09 },
+      offset: { x: -metrics.headWidth * 0.34, z: metrics.headDepth * 0.08, tiltDegrees: 24 },
       label: { direction: 'positive', t: 0.76 },
     },
     roll: {
@@ -259,7 +281,7 @@ export function createImuSpatialGuideRig(THREE, { bounds } = {}) {
       positive: [neutralGap * 2, 180 - neutralGap * 2],
       negative: [180 + neutralGap * 2, 360 - neutralGap * 2],
       neutralBoundaries: [0, 180, 360],
-      offset: { y: -metrics.headHeight * 0.08, presentationBow: metrics.headHeight * 0.045 },
+      offset: { y: -metrics.headHeight * 0.08, tiltDegrees: 22 },
       label: { direction: 'negative', t: 1 },
     },
   };

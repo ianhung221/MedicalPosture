@@ -91,6 +91,8 @@ function updateImuGuideLabelLayout(container, layout) {
     if (!contained.valid) return;
     label.style.setProperty('--imu-guide-x', `${contained.x.toFixed(1)}px`);
     label.style.setProperty('--imu-guide-y', `${contained.y.toFixed(1)}px`);
+    label.style.setProperty('--imu-guide-anchor-x', `${(-contained.anchorX * 100).toFixed(0)}%`);
+    label.style.setProperty('--imu-guide-anchor-y', `${(-contained.anchorY * 100).toFixed(0)}%`);
     label.classList.add('is-positioned');
     label.classList.toggle('is-subdued', Boolean(contained.subdued));
   });
