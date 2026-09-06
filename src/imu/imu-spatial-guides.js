@@ -14,6 +14,12 @@ export const IMU_GUIDE_VISUAL_CONFIG = Object.freeze({
   labelFootprintInsetX: 8,
   labelFootprintInsetY: 6,
   labelAnchorGap: 6,
+  rollWidthRatio: 0.76,
+  rollGapRatio: 0.13,
+  pitchHeightRatio: 0.62,
+  pitchSideGapRatio: 0.13,
+  yawWidthRatio: 0.76,
+  yawBottomGapRatio: 0.12,
 });
 
 export const HEAD_CANONICAL_BASIS = Object.freeze({
@@ -197,6 +203,69 @@ export function deriveHeadVisualMetrics(bounds) {
     headWidth * IMU_GUIDE_VISUAL_CONFIG.framingHeadWidthMultiplier,
   );
   return Object.freeze({ fullWidth, fullHeight, fullDepth, headBottom, headWidth, headHeight, headDepth, pivot, radii, framingRadius });
+}
+
+function point(x, y) { return Object.freeze({ x, y }); }
+function cubic(start, control1, control2, end) {
+  return `M ${start.x.toFixed(1)} ${start.y.toFixed(1)} C ${control1.x.toFixed(1)} ${control1.y.toFixed(1)}, ${control2.x.toFixed(1)} ${control2.y.toFixed(1)}, ${end.x.toFixed(1)} ${end.y.toFixed(1)}`;
+}
+
+export function deriveGuideScreenLayout(width, height, { headWidthRatio = 0.42 } = {}) {
+  if (![width, height].every(Number.isFinite) || width <= 0 || height <= 0) return null;
+  const portrait = width / height < 0.86;
+  const headWidth = Math.min(width * headWidthRatio, height * 0.38);
+  const headHeight = headWidth / IMU_GUIDE_VISUAL_CONFIG.headWidthToHeightRatio;
+  const centerX = width * (portrait ? 0.46 : 0.5);
+  const centerY = height * 0.49;
+  const head = Object.freeze({ left: centerX - headWidth / 2, right: centerX + headWidth / 2, top: centerY - headHeight / 2, bottom: centerY + headHeight / 2, width: headWidth, height: headHeight, centerX, centerY });
+  const face = Object.freeze({ left: centerX - headWidth * 0.34, right: centerX + headWidth * 0.34, top: centerY - headHeight * 0.31, bottom: centerY + headHeight * 0.35 });
+
+  const rollWidth = headWidth * IMU_GUIDE_VISUAL_CONFIG.rollWidthRatio;
+  const rollY = head.top - headHeight * IMU_GUIDE_VISUAL_CONFIG.rollGapRatio;
+  const rollLeft = point(centerX - rollWidth / 2, rollY);
+  const rollMid = point(centerX, rollY - rollWidth * 0.13);
+  const rollRight = point(centerX + rollWidth / 2, rollY);
+
+  const pitchHeight = headHeight * IMU_GUIDE_VISUAL_CONFIG.pitchHeightRatio;
+  const pitchTopY = centerY - pitchHeight * 0.42;
+  const pitchBottomY = centerY + pitchHeight * 0.58;
+  const sideGap = headWidth * IMU_GUIDE_VISUAL_CONFIG.pitchSideGapRatio;
+  const arcDepth = headWidth * 0.2;
+  const rightSpace = width - head.right;
+  const leftSpace = head.left;
+  const pitchSide = rightSpace >= headWidth * 0.36 || rightSpace >= leftSpace ? 'right' : 'left';
+  const pitchX = pitchSide === 'right' ? head.right + sideGap : head.left - sideGap;
+  const pitchOuterX = pitchSide === 'right' ? pitchX + arcDepth : pitchX - arcDepth;
+  const pitchMidY = (pitchTopY + pitchBottomY) / 2;
+
+  const yawWidth = headWidth * IMU_GUIDE_VISUAL_CONFIG.yawWidthRatio;
+  const yawY = head.bottom + headHeight * IMU_GUIDE_VISUAL_CONFIG.yawBottomGapRatio;
+  const yawLeft = point(centerX - yawWidth / 2, yawY);
+  const yawMid = point(centerX, yawY + yawWidth * 0.12);
+  const yawRight = point(centerX + yawWidth / 2, yawY);
+
+  return Object.freeze({
+    head,
+    protectedFace: face,
+    pitchSide,
+    guides: Object.freeze({
+      roll: Object.freeze({
+        negativePath: cubic(rollMid, point(centerX - rollWidth * 0.12, rollMid.y), point(rollLeft.x + rollWidth * 0.08, rollY - rollWidth * 0.05), rollLeft),
+        positivePath: cubic(rollMid, point(centerX + rollWidth * 0.12, rollMid.y), point(rollRight.x - rollWidth * 0.08, rollY - rollWidth * 0.05), rollRight),
+        label: point(centerX, rollMid.y - 8),
+      }),
+      pitch: Object.freeze({
+        negativePath: cubic(point(pitchX, pitchMidY), point(pitchOuterX, pitchMidY - pitchHeight * 0.08), point(pitchOuterX, pitchTopY + pitchHeight * 0.08), point(pitchX, pitchTopY)),
+        positivePath: cubic(point(pitchX, pitchMidY), point(pitchOuterX, pitchMidY + pitchHeight * 0.08), point(pitchOuterX, pitchBottomY - pitchHeight * 0.08), point(pitchX, pitchBottomY)),
+        label: point(pitchOuterX + (pitchSide === 'right' ? 4 : -4), pitchMidY),
+      }),
+      yaw: Object.freeze({
+        positivePath: cubic(yawMid, point(centerX - yawWidth * 0.12, yawMid.y), point(yawLeft.x + yawWidth * 0.08, yawY + yawWidth * 0.05), yawLeft),
+        negativePath: cubic(yawMid, point(centerX + yawWidth * 0.12, yawMid.y), point(yawRight.x - yawWidth * 0.08, yawY + yawWidth * 0.05), yawRight),
+        label: point(centerX, yawMid.y + 10),
+      }),
+    }),
+  });
 }
 
 function createCircularArcCurve(THREE, axis, radius, startDegrees, endDegrees, presentation = {}) {

@@ -1,7 +1,8 @@
 import {
-  clampGuideLabelProjection,
   computeGuideCameraFraming,
-  createImuSpatialGuideRig,
+  deriveGuideScreenLayout,
+  deriveHeadVisualMetrics,
+  guideEmphasisState,
 } from './imu-spatial-guides.js';
 
 const THREE_MODULE_URL = new URL('../../assets/vendor/three-r185/three.module.min.js', import.meta.url).href;
@@ -72,14 +73,15 @@ export function createImuHeadRenderer({
   let framingRoot = null;
   let orientationRoot = null;
   let modelRoot = null;
-  let guideRig = null;
-  let guideProjectionVectors = null;
   let host = null;
   let resizeObserver = null;
   let pendingFrame = null;
   let latestQuaternion = { ...IDENTITY_QUATERNION };
   let latestGuideTelemetry = { pitch: 0, roll: 0, yaw: 0 };
   let guideLayoutListener = null;
+  let latestGuideLayout = null;
+  let latestGuideEmphasis = guideEmphasisState();
+  let emittedGuideSignature = '';
   let framingRadius = 1.2;
   let framingTarget = { x: 0, y: 0.72, z: 0 };
   let paused = false;
@@ -130,16 +132,12 @@ export function createImuHeadRenderer({
   };
 
   const emitGuideLayout = (size) => {
-    if (!guideLayoutListener || !guideRig || !camera || !scene || size.width <= 0 || size.height <= 0) return;
-    scene.updateMatrixWorld?.(true);
-    const layout = {};
-    Object.entries(guideRig.anchors).forEach(([axis, anchor]) => {
-      const world = guideProjectionVectors[axis];
-      anchor.getWorldPosition(world);
-      world.project(camera);
-      layout[axis] = clampGuideLabelProjection(world, size.width, size.height);
-    });
-    guideLayoutListener(Object.freeze(layout));
+    if (!guideLayoutListener || size.width <= 0 || size.height <= 0) return;
+    const signature = `${size.width}:${size.height}:${latestGuideEmphasis.pitch}:${latestGuideEmphasis.roll}:${latestGuideEmphasis.yaw}`;
+    if (signature === emittedGuideSignature && latestGuideLayout) return;
+    latestGuideLayout = deriveGuideScreenLayout(size.width, size.height);
+    emittedGuideSignature = signature;
+    guideLayoutListener(Object.freeze({ ...latestGuideLayout, emphasis: latestGuideEmphasis }));
   };
 
   const renderNow = ({ first = false } = {}) => {
@@ -150,7 +148,6 @@ export function createImuHeadRenderer({
     }
     try {
       orientationRoot.quaternion.set(latestQuaternion.x, latestQuaternion.y, latestQuaternion.z, latestQuaternion.w).normalize();
-      guideRig?.applyOrientation(latestQuaternion);
       renderer.render(scene, camera);
       renderCount += 1;
       emitGuideLayout(size);
@@ -281,13 +278,8 @@ export function createImuHeadRenderer({
           loadingModelRoot.position.set(0, -0.12, 0);
           orientationRoot.updateWorldMatrix?.(true, true);
           const modelBounds = new THREE.Box3().setFromObject(loadingModelRoot);
-          guideRig = createImuSpatialGuideRig(THREE, { bounds: modelBounds });
-          guideProjectionVectors = Object.fromEntries(Object.keys(guideRig.anchors).map((axis) => [axis, new THREE.Vector3()]));
-          framingRoot.add(guideRig.root);
-          guideRig.applyOrientation(latestQuaternion);
-          guideRig.applyEmphasis(latestGuideTelemetry);
-          const headMetrics = guideRig.getHeadMetrics();
-          framingRadius = guideRig.getFramingRadius();
+          const headMetrics = deriveHeadVisualMetrics(modelBounds);
+          framingRadius = headMetrics.framingRadius;
           framingTarget = { ...headMetrics.pivot };
           // Move the rotation origin from the bust origin to the visual head center
           // while preserving the model's neutral world-space placement.
@@ -374,12 +366,16 @@ export function createImuHeadRenderer({
       roll: Number.isFinite(telemetry?.roll) ? telemetry.roll : 0,
       yaw: Number.isFinite(telemetry?.yaw) ? telemetry.yaw : 0,
     };
-    if (guideRig?.applyEmphasis(latestGuideTelemetry)) scheduleRender();
-    return guideRig?.getEmphasis?.() || null;
+    const nextEmphasis = guideEmphasisState(latestGuideTelemetry);
+    const changed = ['pitch', 'roll', 'yaw'].some((axis) => nextEmphasis[axis] !== latestGuideEmphasis[axis]);
+    latestGuideEmphasis = nextEmphasis;
+    if (changed) { emittedGuideSignature = ''; scheduleRender(); }
+    return latestGuideEmphasis;
   };
 
   const setGuideLayoutListener = (listener) => {
     guideLayoutListener = typeof listener === 'function' ? listener : null;
+    emittedGuideSignature = '';
     if (guideLayoutListener) scheduleRender();
     return () => { if (guideLayoutListener === listener) guideLayoutListener = null; };
   };
@@ -396,7 +392,6 @@ export function createImuHeadRenderer({
     });
     geometries.forEach((geometry) => geometry.dispose?.());
     materials.forEach((material) => material.dispose?.());
-    guideRig?.dispose?.();
     renderer?.domElement?.removeEventListener?.('webglcontextlost', handleContextLost);
     renderer?.domElement?.removeEventListener?.('webglcontextrestored', handleContextRestored);
     renderer?.dispose?.();
@@ -409,9 +404,9 @@ export function createImuHeadRenderer({
     framingRoot = null;
     orientationRoot = null;
     modelRoot = null;
-    guideRig = null;
-    guideProjectionVectors = null;
     guideLayoutListener = null;
+    latestGuideLayout = null;
+    emittedGuideSignature = '';
     framingRadius = 1.2;
     framingTarget = { x: 0, y: 0.72, z: 0 };
     contextLost = false;
@@ -430,7 +425,7 @@ export function createImuHeadRenderer({
     dispose,
     getStatus: () => status,
     getError: () => lastError,
-    getDiagnostics: () => ({ status, renderCount, attachCount, modelLoadCount, contextCount, guideCreationCount, guideResourceCount: guideRig?.getResourceCount?.() || 0, guideOrientationApplyCount: guideRig?.getOrientationApplyCount?.() || 0, framingRadius, framingTarget: { ...framingTarget }, pendingFrame: pendingFrame !== null, attached: Boolean(host), paused, contextLost, modelLoadMs, error: lastError }),
+    getDiagnostics: () => ({ status, renderCount, attachCount, modelLoadCount, contextCount, guideCreationCount, guideResourceCount: 0, guideOrientationApplyCount: 0, framingRadius, framingTarget: { ...framingTarget }, pendingFrame: pendingFrame !== null, attached: Boolean(host), paused, contextLost, modelLoadMs, error: lastError }),
   };
 }
 
