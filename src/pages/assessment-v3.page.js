@@ -32,6 +32,7 @@ import { DEFAULT_MODEL_VARIANT, MODEL_VARIANTS, POSTURE_STATES } from '../ai/med
 import { imuMonitoringEngine } from '../imu/imu-monitoring-engine.js';
 import { toUserFacingModelQuaternion } from '../imu/imu-3d-orientation-adapter.js';
 import { imuHeadRenderer } from '../imu/imu-head-renderer.js';
+import { containGuideLabelFootprint } from '../imu/imu-spatial-guides.js';
 import { getPlatformSettings } from '../state/platform-settings.js';
 
 const modeLabels = { smart: '智慧模式', ai: 'AI 坐姿辨識', imu: 'IMU 姿態感測' };
@@ -82,10 +83,16 @@ function updateImuGuideLabelLayout(container, layout) {
     const point = layout?.[axis];
     const label = container.querySelector(`[data-imu-guide-label="${axis}"]`);
     if (!label || !point?.valid) return;
-    label.style.setProperty('--imu-guide-x', `${point.x.toFixed(1)}px`);
-    label.style.setProperty('--imu-guide-y', `${point.y.toFixed(1)}px`);
+    const stage = label.parentElement;
+    const contained = containGuideLabelFootprint(point, stage?.clientWidth || 0, stage?.clientHeight || 0, {
+      labelWidth: label.offsetWidth || 52,
+      labelHeight: label.offsetHeight || 32,
+    });
+    if (!contained.valid) return;
+    label.style.setProperty('--imu-guide-x', `${contained.x.toFixed(1)}px`);
+    label.style.setProperty('--imu-guide-y', `${contained.y.toFixed(1)}px`);
     label.classList.add('is-positioned');
-    label.classList.toggle('is-subdued', Boolean(point.subdued));
+    label.classList.toggle('is-subdued', Boolean(contained.subdued));
   });
 }
 

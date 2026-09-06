@@ -7,8 +7,11 @@ export const IMU_GUIDE_VISUAL_CONFIG = Object.freeze({
   headRegionHeightRatio: 0.66,
   headWidthToHeightRatio: 0.82,
   headDepthToHeightRatio: 0.94,
-  framingRadiusMultiplier: 1.38,
+  framingRadiusMultiplier: 1.45,
   thickTubeMultiplier: 1.55,
+  neutralGapDegrees: 2.5,
+  labelFootprintInsetX: 8,
+  labelFootprintInsetY: 6,
 });
 
 export const HEAD_CANONICAL_BASIS = Object.freeze({
@@ -92,6 +95,35 @@ export function clampGuideLabelProjection(ndc, width, height, {
   return Object.freeze({ x, y, subdued: outside, valid: true });
 }
 
+export function containGuideLabelFootprint(point, width, height, {
+  labelWidth = 0,
+  labelHeight = 0,
+  anchorX = 0.5,
+  anchorY = 0.5,
+  insetX = IMU_GUIDE_VISUAL_CONFIG.labelFootprintInsetX,
+  insetY = IMU_GUIDE_VISUAL_CONFIG.labelFootprintInsetY,
+} = {}) {
+  if (!point?.valid || ![point.x, point.y, width, height, labelWidth, labelHeight].every(Number.isFinite) || width <= 0 || height <= 0) {
+    return Object.freeze({ x: 0, y: 0, subdued: true, valid: false });
+  }
+  const safeAnchorX = Math.min(1, Math.max(0, finite(anchorX, 0.5)));
+  const safeAnchorY = Math.min(1, Math.max(0, finite(anchorY, 0.5)));
+  const safeLabelWidth = Math.min(width, Math.max(0, labelWidth));
+  const safeLabelHeight = Math.min(height, Math.max(0, labelHeight));
+  const minX = Math.min(width / 2, insetX + safeLabelWidth * safeAnchorX);
+  const maxX = Math.max(minX, width - insetX - safeLabelWidth * (1 - safeAnchorX));
+  const minY = Math.min(height / 2, insetY + safeLabelHeight * safeAnchorY);
+  const maxY = Math.max(minY, height - insetY - safeLabelHeight * (1 - safeAnchorY));
+  const x = Math.min(maxX, Math.max(minX, point.x));
+  const y = Math.min(maxY, Math.max(minY, point.y));
+  return Object.freeze({
+    x,
+    y,
+    subdued: Boolean(point.subdued || x !== point.x || y !== point.y),
+    valid: true,
+  });
+}
+
 export function computeGuideCameraFraming({
   radius,
   aspect,
@@ -138,25 +170,30 @@ export function deriveHeadVisualMetrics(bounds) {
     z: (min.z + max.z) / 2 + headDepth * 0.035,
   });
   const radii = Object.freeze({
-    pitch: Math.max(headHeight * 0.53, headDepth * 0.56),
-    roll: Math.max(headWidth * 0.58, headHeight * 0.53),
-    yaw: Math.max(headWidth * 0.59, headDepth * 0.56),
+    pitch: Math.max(headHeight * 0.48, headDepth * 0.51),
+    roll: Math.max(headWidth * 0.55, headHeight * 0.48),
+    yaw: Math.max(headWidth * 0.55, headDepth * 0.49),
   });
   const framingRadius = Math.max(radii.pitch, radii.roll, radii.yaw) * IMU_GUIDE_VISUAL_CONFIG.framingRadiusMultiplier;
   return Object.freeze({ fullWidth, fullHeight, fullDepth, headBottom, headWidth, headHeight, headDepth, pivot, radii, framingRadius });
 }
 
-function createCircularArcCurve(THREE, axis, radius, startDegrees, endDegrees) {
+function createCircularArcCurve(THREE, axis, radius, startDegrees, endDegrees, offset = {}) {
   const start = startDegrees * Math.PI / 180;
   const sweep = (endDegrees - startDegrees) * Math.PI / 180;
+  const offsetX = finite(offset.x);
+  const offsetY = finite(offset.y);
+  const offsetZ = finite(offset.z);
+  const presentationBow = finite(offset.presentationBow);
   class CircularArcCurve extends THREE.Curve {
     getPoint(t, target = new THREE.Vector3()) {
       const angle = start + sweep * t;
       const cosine = Math.cos(angle) * radius;
       const sine = Math.sin(angle) * radius;
-      if (axis === 'pitch') return target.set(0, cosine, sine);
-      if (axis === 'roll') return target.set(cosine, sine, 0);
-      return target.set(cosine, 0, sine);
+      const bow = Math.sin(Math.PI * t) * presentationBow;
+      if (axis === 'pitch') return target.set(offsetX + bow, cosine + offsetY, sine + offsetZ);
+      if (axis === 'roll') return target.set(cosine + offsetX, sine + offsetY, offsetZ);
+      return target.set(cosine + offsetX, offsetY + bow, sine + offsetZ);
     }
   }
   return new CircularArcCurve();
@@ -195,27 +232,34 @@ export function createImuSpatialGuideRig(THREE, { bounds } = {}) {
   const smallestHeadDimension = Math.min(metrics.headWidth, metrics.headHeight, metrics.headDepth);
   const thinRadius = Math.max(0.007, smallestHeadDimension * 0.008);
   const thickRadius = thinRadius * IMU_GUIDE_VISUAL_CONFIG.thickTubeMultiplier;
+  const neutralGap = IMU_GUIDE_VISUAL_CONFIG.neutralGapDegrees;
 
   const definitions = {
     pitch: {
       normal: HEAD_CANONICAL_BASIS.right,
       radius: metrics.radii.pitch,
-      negative: [90, 24],
-      positive: [90, 156],
+      negative: [90 - neutralGap, 28],
+      positive: [90 + neutralGap, 152],
+      neutralBoundaries: [90],
+      offset: { x: -metrics.headWidth * 0.17, z: metrics.headDepth * 0.08, presentationBow: metrics.headWidth * 0.09 },
       label: { direction: 'positive', t: 0.76 },
     },
     roll: {
       normal: HEAD_CANONICAL_BASIS.forward,
       radius: metrics.radii.roll,
-      negative: [90, 180],
-      positive: [90, 0],
+      negative: [90 + neutralGap, 172],
+      positive: [90 - neutralGap, 8],
+      neutralBoundaries: [90],
+      offset: { y: metrics.headHeight * 0.01, z: metrics.headDepth * 0.07 },
       label: { direction: 'negative', t: 0.18 },
     },
     yaw: {
       normal: HEAD_CANONICAL_BASIS.up,
       radius: metrics.radii.yaw,
-      positive: [0, 180],
-      negative: [180, 360],
+      positive: [neutralGap * 2, 180 - neutralGap * 2],
+      negative: [180 + neutralGap * 2, 360 - neutralGap * 2],
+      neutralBoundaries: [0, 180, 360],
+      offset: { y: -metrics.headHeight * 0.08, presentationBow: metrics.headHeight * 0.045 },
       label: { direction: 'negative', t: 1 },
     },
   };
@@ -233,7 +277,7 @@ export function createImuSpatialGuideRig(THREE, { bounds } = {}) {
 
     DIRECTIONS.forEach((direction) => {
       const [start, end] = definition[direction];
-      const curve = createCircularArcCurve(THREE, axis, definition.radius, start, end);
+      const curve = createCircularArcCurve(THREE, axis, definition.radius, start, end, definition.offset);
       const group = new THREE.Group();
       group.name = `imu-${axis}-${direction}-segment`;
       const thinGeometry = new THREE.TubeGeometry(curve, 18, thinRadius, 5, false);
@@ -257,7 +301,21 @@ export function createImuSpatialGuideRig(THREE, { bounds } = {}) {
       group.add(arrow);
       resources.add(arrowMaterial);
       plane.add(group);
-      segments.set(`${axis}:${direction}`, { axis, direction, curve, group, thin, thick, arrow, thinMaterial, thickMaterial, arrowMaterial });
+      segments.set(`${axis}:${direction}`, {
+        axis,
+        direction,
+        curve,
+        group,
+        thin,
+        thick,
+        arrow,
+        thinMaterial,
+        thickMaterial,
+        arrowMaterial,
+        startDegrees: start,
+        endDegrees: end,
+        neutralBoundaries: Object.freeze([...definition.neutralBoundaries]),
+      });
     });
 
     const labelSegment = segments.get(`${axis}:${definition.label.direction}`);
