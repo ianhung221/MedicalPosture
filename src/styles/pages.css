@@ -1210,7 +1210,7 @@
 .imu-concept-label { position: absolute; z-index: 5; right: 3.2%; top: 4%; padding: .36rem .62rem; border-radius: 999px; color: var(--imu-dark); background: rgb(239 235 255 / 90%); font-size: .54rem; font-weight: 800; }
 .imu-head-canvas-host { position: absolute; z-index: 2; inset: 7% 8% 3%; pointer-events: none; }
 .imu-head-canvas { display: block; width: 100%; height: 100%; }
-.imu-guide-overlay { position: absolute; z-index: 4; inset: 0; width: 100%; height: 100%; overflow: visible; color: #704ce0; pointer-events: none; }
+.imu-guide-overlay { position: absolute; z-index: 4; inset: 0; width: 100%; height: 100%; overflow: hidden; color: #704ce0; pointer-events: none; }
 .imu-guide-path { fill: none; stroke: currentColor; stroke-width: 1.25; stroke-linecap: round; opacity: .34; vector-effect: non-scaling-stroke; transition: opacity .16s ease, stroke-width .16s ease; }
 .imu-guide-path.is-neutral { opacity: .56; }
 .imu-guide-path.is-active { stroke-width: 2; opacity: .9; }

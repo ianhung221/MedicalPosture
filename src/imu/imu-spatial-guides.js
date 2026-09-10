@@ -20,6 +20,7 @@ export const IMU_GUIDE_VISUAL_CONFIG = Object.freeze({
   pitchSideGapRatio: 0.13,
   yawWidthRatio: 0.76,
   yawBottomGapRatio: 0.12,
+  neutralGapRatio: 0.035,
 });
 
 export const HEAD_CANONICAL_BASIS = Object.freeze({
@@ -225,6 +226,7 @@ export function deriveGuideScreenLayout(width, height, { headWidthRatio = 0.42 }
   const rollLeft = point(centerX - rollWidth / 2, rollY);
   const rollMid = point(centerX, rollY - rollWidth * 0.13);
   const rollRight = point(centerX + rollWidth / 2, rollY);
+  const neutralGap = headWidth * IMU_GUIDE_VISUAL_CONFIG.neutralGapRatio;
 
   const pitchHeight = headHeight * IMU_GUIDE_VISUAL_CONFIG.pitchHeightRatio;
   const pitchTopY = centerY - pitchHeight * 0.42;
@@ -250,18 +252,18 @@ export function deriveGuideScreenLayout(width, height, { headWidthRatio = 0.42 }
     pitchSide,
     guides: Object.freeze({
       roll: Object.freeze({
-        negativePath: cubic(rollMid, point(centerX - rollWidth * 0.12, rollMid.y), point(rollLeft.x + rollWidth * 0.08, rollY - rollWidth * 0.05), rollLeft),
-        positivePath: cubic(rollMid, point(centerX + rollWidth * 0.12, rollMid.y), point(rollRight.x - rollWidth * 0.08, rollY - rollWidth * 0.05), rollRight),
+        negativePath: cubic(point(rollMid.x - neutralGap, rollMid.y), point(centerX - rollWidth * 0.12, rollMid.y), point(rollLeft.x + rollWidth * 0.08, rollY - rollWidth * 0.05), rollLeft),
+        positivePath: cubic(point(rollMid.x + neutralGap, rollMid.y), point(centerX + rollWidth * 0.12, rollMid.y), point(rollRight.x - rollWidth * 0.08, rollY - rollWidth * 0.05), rollRight),
         label: point(centerX, rollMid.y - 8),
       }),
       pitch: Object.freeze({
-        negativePath: cubic(point(pitchX, pitchMidY), point(pitchOuterX, pitchMidY - pitchHeight * 0.08), point(pitchOuterX, pitchTopY + pitchHeight * 0.08), point(pitchX, pitchTopY)),
-        positivePath: cubic(point(pitchX, pitchMidY), point(pitchOuterX, pitchMidY + pitchHeight * 0.08), point(pitchOuterX, pitchBottomY - pitchHeight * 0.08), point(pitchX, pitchBottomY)),
+        negativePath: cubic(point(pitchX, pitchMidY - neutralGap), point(pitchOuterX, pitchMidY - pitchHeight * 0.08), point(pitchOuterX, pitchTopY + pitchHeight * 0.08), point(pitchX, pitchTopY)),
+        positivePath: cubic(point(pitchX, pitchMidY + neutralGap), point(pitchOuterX, pitchMidY + pitchHeight * 0.08), point(pitchOuterX, pitchBottomY - pitchHeight * 0.08), point(pitchX, pitchBottomY)),
         label: point(pitchOuterX + (pitchSide === 'right' ? 4 : -4), pitchMidY),
       }),
       yaw: Object.freeze({
-        positivePath: cubic(yawMid, point(centerX - yawWidth * 0.12, yawMid.y), point(yawLeft.x + yawWidth * 0.08, yawY + yawWidth * 0.05), yawLeft),
-        negativePath: cubic(yawMid, point(centerX + yawWidth * 0.12, yawMid.y), point(yawRight.x - yawWidth * 0.08, yawY + yawWidth * 0.05), yawRight),
+        positivePath: cubic(point(yawMid.x - neutralGap, yawMid.y), point(centerX - yawWidth * 0.12, yawMid.y), point(yawLeft.x + yawWidth * 0.08, yawY + yawWidth * 0.05), yawLeft),
+        negativePath: cubic(point(yawMid.x + neutralGap, yawMid.y), point(centerX + yawWidth * 0.12, yawMid.y), point(yawRight.x - yawWidth * 0.08, yawY + yawWidth * 0.05), yawRight),
         label: point(centerX, yawMid.y + 10),
       }),
     }),
