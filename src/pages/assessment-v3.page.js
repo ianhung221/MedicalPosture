@@ -32,7 +32,6 @@ import { DEFAULT_MODEL_VARIANT, MODEL_VARIANTS, POSTURE_STATES } from '../ai/med
 import { imuMonitoringEngine } from '../imu/imu-monitoring-engine.js';
 import { toUserFacingModelQuaternion } from '../imu/imu-3d-orientation-adapter.js';
 import { imuHeadRenderer } from '../imu/imu-head-renderer.js';
-import { containGuideLabelFootprint } from '../imu/imu-spatial-guides.js';
 import { getPlatformSettings } from '../state/platform-settings.js';
 
 const modeLabels = { smart: '智慧模式', ai: 'AI 坐姿辨識', imu: 'IMU 姿態感測' };
@@ -78,31 +77,27 @@ function setText(container, selector, value) {
   if (element && element.textContent !== value) element.textContent = value;
 }
 
-function updateImuGuideLabelLayout(container, layout) {
+export function updateImuGuideLabelLayout(container, layout) {
+  if (!layout) return;
+  const overlay = container.querySelector('[data-imu-guide-overlay]');
+  const viewBox = `0 0 ${layout.width} ${layout.height}`;
+  const geometryChanged = overlay?.getAttribute('viewBox') !== viewBox;
+  if (geometryChanged) overlay?.setAttribute('viewBox', viewBox);
   ['pitch', 'roll', 'yaw'].forEach((axis) => {
-    const guide = layout?.guides?.[axis];
-    const point = guide?.label ? { ...guide.label, subdued: false, valid: true } : null;
-    const label = container.querySelector(`[data-imu-guide-label="${axis}"]`);
-    if (!label || !point?.valid || !guide) return;
+    const guide = layout.guides[axis];
     ['negative', 'positive'].forEach((direction) => {
       const path = container.querySelector(`[data-imu-guide-path="${axis}-${direction}"]`);
       if (!path) return;
-      path.setAttribute('d', guide[`${direction}Path`]);
+      if (geometryChanged) path.setAttribute('d', guide[`${direction}Path`]);
       path.classList.toggle('is-active', layout.emphasis?.[axis] === direction);
       path.classList.toggle('is-neutral', layout.emphasis?.[axis] === 'neutral');
     });
-    const stage = label.parentElement;
-    const contained = containGuideLabelFootprint(point, stage?.clientWidth || 0, stage?.clientHeight || 0, {
-      labelWidth: label.offsetWidth || 52,
-      labelHeight: label.offsetHeight || 32,
-    });
-    if (!contained.valid) return;
-    label.style.setProperty('--imu-guide-x', `${contained.x.toFixed(1)}px`);
-    label.style.setProperty('--imu-guide-y', `${contained.y.toFixed(1)}px`);
-    label.style.setProperty('--imu-guide-anchor-x', `${(-contained.anchorX * 100).toFixed(0)}%`);
-    label.style.setProperty('--imu-guide-anchor-y', `${(-contained.anchorY * 100).toFixed(0)}%`);
+    if (!geometryChanged) return;
+    const label = container.querySelector(`[data-imu-guide-label="${axis}"]`);
+    if (!label) return;
+    label.style.setProperty('--imu-guide-x', `${guide.label.x / layout.width * 100}%`);
+    label.style.setProperty('--imu-guide-y', `${guide.label.y / layout.height * 100}%`);
     label.classList.add('is-positioned');
-    label.classList.toggle('is-subdued', Boolean(contained.subdued));
   });
 }
 
@@ -219,7 +214,7 @@ function decisionFlow(session) {
   return `<section class="smart-decision-strip" aria-label="智慧模式決策流程"><div><small>情境</small><strong>${context.label}</strong></div><span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span><div><small>可用裝置</small><strong>${context.device}</strong></div><span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span><div><small>系統建議</small><strong>${context.recommendation}</strong></div><span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span><div class="smart-decision-strip__result"><small>目前偵測方式</small><strong>${context.recommendation}</strong></div></section>`;
 }
 
-function mediaPanel(method, paused, session = null) {
+export function mediaPanel(method, paused, session = null) {
   const isAi = method === 'ai';
   if (!isAi) {
     const runtime = session?.imuRuntime || {}; const live = runtime.runtimeKind === 'browser-sensors'; const preparing = ['requesting-permission', 'waiting-samples', 'calibrating', 'monitoring'].includes(runtime.status);

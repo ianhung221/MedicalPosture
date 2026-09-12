@@ -135,7 +135,9 @@ export function createImuHeadRenderer({
     if (!guideLayoutListener || size.width <= 0 || size.height <= 0) return;
     const signature = `${size.width}:${size.height}:${latestGuideEmphasis.pitch}:${latestGuideEmphasis.roll}:${latestGuideEmphasis.yaw}`;
     if (signature === emittedGuideSignature && latestGuideLayout) return;
-    latestGuideLayout = deriveGuideScreenLayout(size.width, size.height);
+    if (!latestGuideLayout || latestGuideLayout.width !== size.width || latestGuideLayout.height !== size.height) {
+      latestGuideLayout = deriveGuideScreenLayout(size.width, size.height);
+    }
     emittedGuideSignature = signature;
     guideLayoutListener(Object.freeze({ ...latestGuideLayout, emphasis: latestGuideEmphasis }));
   };

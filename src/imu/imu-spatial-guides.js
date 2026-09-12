@@ -1,76 +1,12 @@
+// Stable screen-space composition. No guide geometry depends on orientation.
 export const IMU_GUIDE_VISUAL_CONFIG = Object.freeze({
   deadbandDegrees: 2.5,
-  safeMarginRatio: 0.14,
-  portraitLeftShiftRatio: 0.13,
-  labelInsetX: 30,
-  labelInsetY: 24,
   headRegionHeightRatio: 0.66,
   headWidthToHeightRatio: 0.82,
   headDepthToHeightRatio: 0.94,
-  framingRadiusMultiplier: 1.45,
-  framingHeadWidthMultiplier: 0.85,
-  thickTubeMultiplier: 1.55,
-  neutralGapDegrees: 2.5,
-  labelFootprintInsetX: 8,
-  labelFootprintInsetY: 6,
-  labelAnchorGap: 6,
-  rollWidthRatio: 0.76,
-  rollGapRatio: 0.13,
-  pitchHeightRatio: 0.62,
-  pitchSideGapRatio: 0.13,
-  yawWidthRatio: 0.76,
-  yawBottomGapRatio: 0.12,
-  neutralGapRatio: 0.035,
+  // The rotating model fits within a centered circle, leaving dedicated guide lanes.
+  modelDiameterRatio: 0.58,
 });
-
-export const HEAD_CANONICAL_BASIS = Object.freeze({
-  right: Object.freeze([1, 0, 0]),
-  up: Object.freeze([0, 1, 0]),
-  forward: Object.freeze([0, 0, 1]),
-});
-
-const AXES = Object.freeze(['pitch', 'roll', 'yaw']);
-const DIRECTIONS = Object.freeze(['negative', 'positive']);
-const PURPLE = 0x704ce0;
-
-function finite(value, fallback = 0) {
-  return Number.isFinite(value) ? value : fallback;
-}
-
-function normalizeQuaternion(quaternion) {
-  if (!quaternion || ![quaternion.w, quaternion.x, quaternion.y, quaternion.z].every(Number.isFinite)) return null;
-  const magnitude = Math.hypot(quaternion.w, quaternion.x, quaternion.y, quaternion.z);
-  if (magnitude <= Number.EPSILON) return null;
-  return { w: quaternion.w / magnitude, x: quaternion.x / magnitude, y: quaternion.y / magnitude, z: quaternion.z / magnitude };
-}
-
-function rotateVector(quaternion, [vx, vy, vz]) {
-  const { w, x, y, z } = quaternion;
-  const tx = 2 * (y * vz - z * vy);
-  const ty = 2 * (z * vx - x * vz);
-  const tz = 2 * (x * vy - y * vx);
-  return [vx + w * tx + (y * tz - z * ty), vy + w * ty + (z * tx - x * tz), vz + w * tz + (x * ty - y * tx)];
-}
-
-export function deriveHeadBasis(quaternion) {
-  const normalized = normalizeQuaternion(quaternion);
-  if (!normalized) return null;
-  return Object.freeze({
-    right: Object.freeze(rotateVector(normalized, HEAD_CANONICAL_BASIS.right)),
-    up: Object.freeze(rotateVector(normalized, HEAD_CANONICAL_BASIS.up)),
-    forward: Object.freeze(rotateVector(normalized, HEAD_CANONICAL_BASIS.forward)),
-  });
-}
-
-export function deriveGuidePlaneState(quaternion, pivot = { x: 0, y: 0, z: 0 }) {
-  const normalized = normalizeQuaternion(quaternion);
-  const basis = normalized ? deriveHeadBasis(normalized) : null;
-  if (!basis) return null;
-  return Object.freeze({
-    pivot: Object.freeze({ x: finite(pivot.x), y: finite(pivot.y), z: finite(pivot.z) }),
-    normals: Object.freeze({ pitch: basis.right, yaw: basis.up, roll: basis.forward }),
-  });
-}
 
 export function classifyGuideDirection(angle, deadbandDegrees = IMU_GUIDE_VISUAL_CONFIG.deadbandDegrees) {
   if (!Number.isFinite(angle) || Math.abs(angle) < deadbandDegrees) return 'neutral';
@@ -85,403 +21,76 @@ export function guideEmphasisState(telemetry = {}, deadbandDegrees = IMU_GUIDE_V
   });
 }
 
-export function clampGuideLabelProjection(ndc, width, height, {
-  insetX = IMU_GUIDE_VISUAL_CONFIG.labelInsetX,
-  insetY = IMU_GUIDE_VISUAL_CONFIG.labelInsetY,
-} = {}) {
-  if (!ndc || ![ndc.x, ndc.y, ndc.z, width, height].every(Number.isFinite) || width <= 0 || height <= 0) {
-    return Object.freeze({ x: 0, y: 0, subdued: true, valid: false });
-  }
-  const rawX = (ndc.x * 0.5 + 0.5) * width;
-  const rawY = (-ndc.y * 0.5 + 0.5) * height;
-  const minX = Math.min(insetX, width / 2);
-  const maxX = Math.max(minX, width - insetX);
-  const minY = Math.min(insetY, height / 2);
-  const maxY = Math.max(minY, height - insetY);
-  const x = Math.min(maxX, Math.max(minX, rawX));
-  const y = Math.min(maxY, Math.max(minY, rawY));
-  const outside = ndc.z < -1 || ndc.z > 1 || rawX !== x || rawY !== y;
-  return Object.freeze({ x, y, subdued: outside, valid: true });
-}
-
-export function containGuideLabelFootprint(point, width, height, {
-  labelWidth = 0,
-  labelHeight = 0,
-  anchorX,
-  anchorY,
-  insetX = IMU_GUIDE_VISUAL_CONFIG.labelFootprintInsetX,
-  insetY = IMU_GUIDE_VISUAL_CONFIG.labelFootprintInsetY,
-} = {}) {
-  if (!point?.valid || ![point.x, point.y, width, height, labelWidth, labelHeight].every(Number.isFinite) || width <= 0 || height <= 0) {
-    return Object.freeze({ x: 0, y: 0, subdued: true, valid: false });
-  }
-  const safeLabelWidth = Math.min(width, Math.max(0, labelWidth));
-  const safeLabelHeight = Math.min(height, Math.max(0, labelHeight));
-  const gap = IMU_GUIDE_VISUAL_CONFIG.labelAnchorGap;
-  const spaceLeft = point.x - insetX;
-  const spaceRight = width - insetX - point.x;
-  const preferredHorizontal = point.x <= width / 2 ? 'right' : 'left';
-  const fitsRight = spaceRight >= safeLabelWidth + gap;
-  const fitsLeft = spaceLeft >= safeLabelWidth + gap;
-  const horizontal = Number.isFinite(anchorX)
-    ? (anchorX === 0 ? 'right' : anchorX === 1 ? 'left' : 'center')
-    : preferredHorizontal === 'right'
-      ? (fitsRight ? 'right' : fitsLeft ? 'left' : 'center')
-      : (fitsLeft ? 'left' : fitsRight ? 'right' : 'center');
-  const safeAnchorX = Number.isFinite(anchorX) ? Math.min(1, Math.max(0, anchorX)) : horizontal === 'right' ? 0 : horizontal === 'left' ? 1 : 0.5;
-  const centeredTop = point.y - safeLabelHeight / 2;
-  const centeredBottom = point.y + safeLabelHeight / 2;
-  const vertical = Number.isFinite(anchorY) ? 'explicit' : centeredTop < insetY ? 'below' : centeredBottom > height - insetY ? 'above' : 'center';
-  const safeAnchorY = Number.isFinite(anchorY) ? Math.min(1, Math.max(0, anchorY)) : vertical === 'below' ? 0 : vertical === 'above' ? 1 : 0.5;
-  const proposedX = point.x + (horizontal === 'right' ? gap : horizontal === 'left' ? -gap : 0);
-  const proposedY = point.y + (vertical === 'below' ? gap : vertical === 'above' ? -gap : 0);
-  const minX = Math.min(width / 2, insetX + safeLabelWidth * safeAnchorX);
-  const maxX = Math.max(minX, width - insetX - safeLabelWidth * (1 - safeAnchorX));
-  const minY = Math.min(height / 2, insetY + safeLabelHeight * safeAnchorY);
-  const maxY = Math.max(minY, height - insetY - safeLabelHeight * (1 - safeAnchorY));
-  const x = Math.min(maxX, Math.max(minX, proposedX));
-  const y = Math.min(maxY, Math.max(minY, proposedY));
-  return Object.freeze({
-    x,
-    y,
-    anchorX: safeAnchorX,
-    anchorY: safeAnchorY,
-    side: horizontal,
-    subdued: Boolean(point.subdued || x !== proposedX || y !== proposedY),
-    valid: true,
-  });
-}
-
-export function computeGuideCameraFraming({
-  radius,
-  aspect,
-  verticalFovDegrees = 30,
-  safeMarginRatio = IMU_GUIDE_VISUAL_CONFIG.safeMarginRatio,
-  portraitLeftShiftRatio = IMU_GUIDE_VISUAL_CONFIG.portraitLeftShiftRatio,
-} = {}) {
-  const safeRadius = Math.max(0.01, finite(radius, 1));
-  const safeAspect = Math.max(0.2, finite(aspect, 1));
+export function computeGuideCameraFraming({ radius = 1, aspect = 1, verticalFovDegrees = 30 } = {}) {
+  const safeRadius = Math.max(0.01, Number.isFinite(radius) ? radius : 1);
+  const safeAspect = Math.max(0.2, Number.isFinite(aspect) ? aspect : 1);
   const verticalFov = verticalFovDegrees * Math.PI / 180;
   const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * safeAspect);
-  const limitingFov = Math.min(verticalFov, horizontalFov);
-  const distance = safeRadius * (1 + safeMarginRatio) / Math.sin(limitingFov / 2);
-  const portraitFactor = Math.max(0, Math.min(1, (1 - safeAspect) / 0.45));
-  return Object.freeze({
-    distance,
-    offsetX: portraitFactor > 0 ? -safeRadius * portraitLeftShiftRatio * portraitFactor : 0,
-    verticalFov,
-    horizontalFov,
-  });
-}
-
-function normalizedBounds(bounds) {
-  const min = bounds?.min || { x: -1.5, y: -0.75, z: -0.72 };
-  const max = bounds?.max || { x: 1.5, y: 1.45, z: 0.72 };
-  return {
-    min: { x: finite(min.x, -1.5), y: finite(min.y, -0.75), z: finite(min.z, -0.72) },
-    max: { x: finite(max.x, 1.5), y: finite(max.y, 1.45), z: finite(max.z, 0.72) },
-  };
+  // Fit the rotation-invariant model sphere inside the reserved composition circle.
+  const halfAngle = Math.atan(Math.tan(Math.min(verticalFov, horizontalFov) / 2)
+    * IMU_GUIDE_VISUAL_CONFIG.modelDiameterRatio);
+  return Object.freeze({ distance: safeRadius / Math.sin(halfAngle), offsetX: 0, verticalFov, horizontalFov });
 }
 
 export function deriveHeadVisualMetrics(bounds) {
-  const { min, max } = normalizedBounds(bounds);
-  const fullWidth = Math.max(0.1, max.x - min.x);
-  const fullHeight = Math.max(0.1, max.y - min.y);
-  const fullDepth = Math.max(0.1, max.z - min.z);
+  const min = bounds.min;
+  const max = bounds.max;
+  const fullWidth = max.x - min.x;
+  const fullHeight = max.y - min.y;
+  const fullDepth = max.z - min.z;
   const headHeight = fullHeight * IMU_GUIDE_VISUAL_CONFIG.headRegionHeightRatio;
   const headBottom = max.y - headHeight;
   const headWidth = Math.min(fullWidth, headHeight * IMU_GUIDE_VISUAL_CONFIG.headWidthToHeightRatio);
   const headDepth = Math.min(fullDepth, headHeight * IMU_GUIDE_VISUAL_CONFIG.headDepthToHeightRatio);
+  // Preserve the existing model pivot exactly; only camera framing changes.
   const pivot = Object.freeze({
     x: (min.x + max.x) / 2,
     y: headBottom + headHeight * 0.5,
     z: (min.z + max.z) / 2 + headDepth * 0.035,
   });
-  const compactRadius = Math.min(headWidth * 0.54, headHeight * 0.46, headDepth * 0.48);
-  const radii = Object.freeze({ pitch: compactRadius, roll: compactRadius, yaw: compactRadius });
-  const framingRadius = Math.max(
-    Math.max(radii.pitch, radii.roll, radii.yaw) * IMU_GUIDE_VISUAL_CONFIG.framingRadiusMultiplier,
-    headWidth * IMU_GUIDE_VISUAL_CONFIG.framingHeadWidthMultiplier,
+  const framingRadius = Math.hypot(
+    Math.max(Math.abs(min.x - pivot.x), Math.abs(max.x - pivot.x)),
+    Math.max(Math.abs(min.y - pivot.y), Math.abs(max.y - pivot.y)),
+    Math.max(Math.abs(min.z - pivot.z), Math.abs(max.z - pivot.z)),
   );
-  return Object.freeze({ fullWidth, fullHeight, fullDepth, headBottom, headWidth, headHeight, headDepth, pivot, radii, framingRadius });
+  return Object.freeze({ fullWidth, fullHeight, fullDepth, headBottom, headWidth, headHeight, headDepth, pivot, framingRadius });
 }
 
 function point(x, y) { return Object.freeze({ x, y }); }
-function cubic(start, control1, control2, end) {
-  return `M ${start.x.toFixed(1)} ${start.y.toFixed(1)} C ${control1.x.toFixed(1)} ${control1.y.toFixed(1)}, ${control2.x.toFixed(1)} ${control2.y.toFixed(1)}, ${end.x.toFixed(1)} ${end.y.toFixed(1)}`;
-}
 
-export function deriveGuideScreenLayout(width, height, { headWidthRatio = 0.42 } = {}) {
+// Coordinates use a centered square inside any host aspect ratio. Curves and
+// labels are calculated on resize only; telemetry only changes emphasis.
+export function deriveGuideScreenLayout(width, height) {
   if (![width, height].every(Number.isFinite) || width <= 0 || height <= 0) return null;
-  const portrait = width / height < 0.86;
-  const headWidth = Math.min(width * headWidthRatio, height * 0.38);
-  const headHeight = headWidth / IMU_GUIDE_VISUAL_CONFIG.headWidthToHeightRatio;
-  const centerX = width * (portrait ? 0.46 : 0.5);
-  const centerY = height * 0.49;
-  const head = Object.freeze({ left: centerX - headWidth / 2, right: centerX + headWidth / 2, top: centerY - headHeight / 2, bottom: centerY + headHeight / 2, width: headWidth, height: headHeight, centerX, centerY });
-  const face = Object.freeze({ left: centerX - headWidth * 0.34, right: centerX + headWidth * 0.34, top: centerY - headHeight * 0.31, bottom: centerY + headHeight * 0.35 });
-
-  const rollWidth = headWidth * IMU_GUIDE_VISUAL_CONFIG.rollWidthRatio;
-  const rollY = head.top - headHeight * IMU_GUIDE_VISUAL_CONFIG.rollGapRatio;
-  const rollLeft = point(centerX - rollWidth / 2, rollY);
-  const rollMid = point(centerX, rollY - rollWidth * 0.13);
-  const rollRight = point(centerX + rollWidth / 2, rollY);
-  const neutralGap = headWidth * IMU_GUIDE_VISUAL_CONFIG.neutralGapRatio;
-
-  const pitchHeight = headHeight * IMU_GUIDE_VISUAL_CONFIG.pitchHeightRatio;
-  const pitchTopY = centerY - pitchHeight * 0.42;
-  const pitchBottomY = centerY + pitchHeight * 0.58;
-  const sideGap = headWidth * IMU_GUIDE_VISUAL_CONFIG.pitchSideGapRatio;
-  const arcDepth = headWidth * 0.2;
-  const rightSpace = width - head.right;
-  const leftSpace = head.left;
-  const pitchSide = rightSpace >= headWidth * 0.36 || rightSpace >= leftSpace ? 'right' : 'left';
-  const pitchX = pitchSide === 'right' ? head.right + sideGap : head.left - sideGap;
-  const pitchOuterX = pitchSide === 'right' ? pitchX + arcDepth : pitchX - arcDepth;
-  const pitchMidY = (pitchTopY + pitchBottomY) / 2;
-
-  const yawWidth = headWidth * IMU_GUIDE_VISUAL_CONFIG.yawWidthRatio;
-  const yawY = head.bottom + headHeight * IMU_GUIDE_VISUAL_CONFIG.yawBottomGapRatio;
-  const yawLeft = point(centerX - yawWidth / 2, yawY);
-  const yawMid = point(centerX, yawY + yawWidth * 0.12);
-  const yawRight = point(centerX + yawWidth / 2, yawY);
-
+  const size = Math.min(width, height);
+  const originX = (width - size) / 2;
+  const originY = (height - size) / 2;
+  const p = (x, y) => point(originX + x * size, originY + y * size);
+  const cubic = (...coords) => {
+    const [a, b, c, d] = coords.map(([x, y]) => p(x, y));
+    return `M ${a.x} ${a.y} C ${b.x} ${b.y}, ${c.x} ${c.y}, ${d.x} ${d.y}`;
+  };
+  const radius = size * IMU_GUIDE_VISUAL_CONFIG.modelDiameterRatio / 2;
   return Object.freeze({
-    head,
-    protectedFace: face,
-    pitchSide,
+    width, height,
+    modelEnvelope: Object.freeze({ centerX: width / 2, centerY: height / 2, radius }),
+    pitchSide: 'left',
     guides: Object.freeze({
-      roll: Object.freeze({
-        negativePath: cubic(point(rollMid.x - neutralGap, rollMid.y), point(centerX - rollWidth * 0.12, rollMid.y), point(rollLeft.x + rollWidth * 0.08, rollY - rollWidth * 0.05), rollLeft),
-        positivePath: cubic(point(rollMid.x + neutralGap, rollMid.y), point(centerX + rollWidth * 0.12, rollMid.y), point(rollRight.x - rollWidth * 0.08, rollY - rollWidth * 0.05), rollRight),
-        label: point(centerX, rollMid.y - 8),
-      }),
       pitch: Object.freeze({
-        negativePath: cubic(point(pitchX, pitchMidY - neutralGap), point(pitchOuterX, pitchMidY - pitchHeight * 0.08), point(pitchOuterX, pitchTopY + pitchHeight * 0.08), point(pitchX, pitchTopY)),
-        positivePath: cubic(point(pitchX, pitchMidY + neutralGap), point(pitchOuterX, pitchMidY + pitchHeight * 0.08), point(pitchOuterX, pitchBottomY - pitchHeight * 0.08), point(pitchX, pitchBottomY)),
-        label: point(pitchOuterX + (pitchSide === 'right' ? 4 : -4), pitchMidY),
+        negativePath: cubic([.185, .485], [.16, .43], [.17, .34], [.23, .30]),
+        positivePath: cubic([.185, .515], [.16, .57], [.17, .66], [.23, .70]),
+        label: p(.085, .50),
+      }),
+      roll: Object.freeze({
+        negativePath: cubic([.485, .145], [.43, .145], [.38, .16], [.34, .185]),
+        positivePath: cubic([.515, .145], [.57, .145], [.62, .16], [.66, .185]),
+        label: p(.50, .065),
       }),
       yaw: Object.freeze({
-        positivePath: cubic(point(yawMid.x - neutralGap, yawMid.y), point(centerX - yawWidth * 0.12, yawMid.y), point(yawLeft.x + yawWidth * 0.08, yawY + yawWidth * 0.05), yawLeft),
-        negativePath: cubic(point(yawMid.x + neutralGap, yawMid.y), point(centerX + yawWidth * 0.12, yawMid.y), point(yawRight.x - yawWidth * 0.08, yawY + yawWidth * 0.05), yawRight),
-        label: point(centerX, yawMid.y + 10),
+        positivePath: cubic([.485, .86], [.43, .86], [.38, .85], [.33, .835]),
+        negativePath: cubic([.515, .86], [.57, .86], [.62, .85], [.67, .835]),
+        label: p(.50, .935),
       }),
     }),
   });
-}
-
-function createCircularArcCurve(THREE, axis, radius, startDegrees, endDegrees, presentation = {}) {
-  const start = startDegrees * Math.PI / 180;
-  const sweep = (endDegrees - startDegrees) * Math.PI / 180;
-  const offsetX = finite(presentation.x);
-  const offsetY = finite(presentation.y);
-  const offsetZ = finite(presentation.z);
-  const tilt = finite(presentation.tiltDegrees) * Math.PI / 180;
-  const tiltCosine = Math.cos(tilt);
-  const tiltSine = Math.sin(tilt);
-  class CircularArcCurve extends THREE.Curve {
-    getPoint(t, target = new THREE.Vector3()) {
-      const angle = start + sweep * t;
-      const cosine = Math.cos(angle) * radius;
-      const sine = Math.sin(angle) * radius;
-      if (axis === 'pitch') return target.set(offsetX + sine * tiltSine, cosine + offsetY, offsetZ + sine * tiltCosine);
-      if (axis === 'roll') return target.set(cosine + offsetX, sine + offsetY, offsetZ);
-      return target.set(cosine + offsetX, offsetY - sine * tiltSine, offsetZ + sine * tiltCosine);
-    }
-  }
-  return new CircularArcCurve();
-}
-
-function orientArrow(THREE, arrow, direction) {
-  const from = new THREE.Vector3(0, 1, 0);
-  const to = direction.clone().normalize();
-  arrow.quaternion.setFromUnitVectors(from, to);
-}
-
-function material(THREE, opacity) {
-  return new THREE.MeshBasicMaterial({ color: PURPLE, transparent: true, opacity, depthTest: true, depthWrite: false, toneMapped: false });
-}
-
-function setDirectionalVisual(segment, state, direction) {
-  const neutral = state === 'neutral';
-  const active = state === direction;
-  segment.thin.visible = !active;
-  segment.thick.visible = active;
-  segment.thinMaterial.opacity = neutral ? 0.56 : 0.3;
-  segment.thickMaterial.opacity = 0.92;
-  segment.arrowMaterial.opacity = neutral ? 0.62 : active ? 0.96 : 0.34;
-  const arrowScale = neutral ? 1 : active ? 1.14 : 0.94;
-  segment.arrow.scale.set(arrowScale, arrowScale, arrowScale);
-}
-
-export function createImuSpatialGuideRig(THREE, { bounds } = {}) {
-  const metrics = deriveHeadVisualMetrics(bounds);
-  const root = new THREE.Group();
-  root.name = 'imu-spatial-guide-root';
-  const resources = new Set();
-  const planes = new Map();
-  const segments = new Map();
-  const anchors = {};
-  const smallestHeadDimension = Math.min(metrics.headWidth, metrics.headHeight, metrics.headDepth);
-  const thinRadius = Math.max(0.007, smallestHeadDimension * 0.008);
-  const thickRadius = thinRadius * IMU_GUIDE_VISUAL_CONFIG.thickTubeMultiplier;
-  const neutralGap = IMU_GUIDE_VISUAL_CONFIG.neutralGapDegrees;
-
-  const definitions = {
-    pitch: {
-      normal: HEAD_CANONICAL_BASIS.right,
-      radius: metrics.radii.pitch,
-      negative: [90 - neutralGap, 28],
-      positive: [90 + neutralGap, 152],
-      neutralBoundaries: [90],
-      offset: { x: -metrics.headWidth * 0.34, z: metrics.headDepth * 0.08, tiltDegrees: 24 },
-      label: { direction: 'positive', t: 0.76 },
-    },
-    roll: {
-      normal: HEAD_CANONICAL_BASIS.forward,
-      radius: metrics.radii.roll,
-      negative: [90 + neutralGap, 172],
-      positive: [90 - neutralGap, 8],
-      neutralBoundaries: [90],
-      offset: { y: metrics.headHeight * 0.01, z: metrics.headDepth * 0.07 },
-      label: { direction: 'negative', t: 0.18 },
-    },
-    yaw: {
-      normal: HEAD_CANONICAL_BASIS.up,
-      radius: metrics.radii.yaw,
-      positive: [neutralGap * 2, 180 - neutralGap * 2],
-      negative: [180 + neutralGap * 2, 360 - neutralGap * 2],
-      neutralBoundaries: [0, 180, 360],
-      offset: { y: -metrics.headHeight * 0.08, tiltDegrees: 22 },
-      label: { direction: 'negative', t: 1 },
-    },
-  };
-
-  const arrowGeometry = new THREE.ConeGeometry(thinRadius * 3.3, thinRadius * 9, 7);
-  resources.add(arrowGeometry);
-
-  AXES.forEach((axis) => {
-    const definition = definitions[axis];
-    const plane = new THREE.Group();
-    plane.name = `imu-${axis}-plane-root`;
-    plane.userData.canonicalNormal = [...definition.normal];
-    planes.set(axis, plane);
-    root.add(plane);
-
-    DIRECTIONS.forEach((direction) => {
-      const [start, end] = definition[direction];
-      const curve = createCircularArcCurve(THREE, axis, definition.radius, start, end, definition.offset);
-      const group = new THREE.Group();
-      group.name = `imu-${axis}-${direction}-segment`;
-      const thinGeometry = new THREE.TubeGeometry(curve, 18, thinRadius, 5, false);
-      const thickGeometry = new THREE.TubeGeometry(curve, 18, thickRadius, 5, false);
-      const thinMaterial = material(THREE, 0.56);
-      const thickMaterial = material(THREE, 0.92);
-      const thin = new THREE.Mesh(thinGeometry, thinMaterial);
-      const thick = new THREE.Mesh(thickGeometry, thickMaterial);
-      thin.name = `${axis}-${direction}-arc-thin`;
-      thick.name = `${axis}-${direction}-arc-thick`;
-      thick.visible = false;
-      group.add(thin, thick);
-      resources.add(thinGeometry); resources.add(thickGeometry);
-      resources.add(thinMaterial); resources.add(thickMaterial);
-
-      const arrowMaterial = material(THREE, 0.62);
-      const arrow = new THREE.Mesh(arrowGeometry, arrowMaterial);
-      arrow.name = `${axis}-${direction}-arrow`;
-      arrow.position.copy(curve.getPointAt(1));
-      orientArrow(THREE, arrow, curve.getTangentAt(1));
-      group.add(arrow);
-      resources.add(arrowMaterial);
-      plane.add(group);
-      segments.set(`${axis}:${direction}`, {
-        axis,
-        direction,
-        curve,
-        group,
-        thin,
-        thick,
-        arrow,
-        thinMaterial,
-        thickMaterial,
-        arrowMaterial,
-        startDegrees: start,
-        endDegrees: end,
-        neutralBoundaries: Object.freeze([...definition.neutralBoundaries]),
-      });
-    });
-
-    const labelSegment = segments.get(`${axis}:${definition.label.direction}`);
-    const anchor = new THREE.Object3D();
-    anchor.name = `${axis}-label-anchor`;
-    anchor.position.copy(labelSegment.curve.getPointAt(definition.label.t));
-    plane.add(anchor);
-    anchors[axis] = anchor;
-  });
-
-  // The GLB/camera convention is +X right, +Y up, +Z face-forward. The head keeps
-  // the full presentation quaternion. Each guide plane instead receives only the
-  // shortest rotation that aligns its canonical normal with the current head axis.
-  // Because guideRoot is a sibling of orientationRoot, this cannot double-apply q.
-  const headPivot = new THREE.Vector3(metrics.pivot.x, metrics.pivot.y, metrics.pivot.z);
-  const presentationQuaternion = new THREE.Quaternion();
-  const pivotWorld = headPivot.clone();
-  const canonicalNormals = {
-    pitch: new THREE.Vector3(...HEAD_CANONICAL_BASIS.right),
-    yaw: new THREE.Vector3(...HEAD_CANONICAL_BASIS.up),
-    roll: new THREE.Vector3(...HEAD_CANONICAL_BASIS.forward),
-  };
-  const currentNormals = { pitch: new THREE.Vector3(), yaw: new THREE.Vector3(), roll: new THREE.Vector3() };
-  let orientationApplyCount = 0;
-  let emphasis = guideEmphasisState();
-
-  const applyOrientation = (quaternion) => {
-    if (!quaternion || ![quaternion.w, quaternion.x, quaternion.y, quaternion.z].every(Number.isFinite)) return false;
-    presentationQuaternion.set(quaternion.x, quaternion.y, quaternion.z, quaternion.w).normalize();
-    AXES.forEach((axis) => {
-      currentNormals[axis].copy(canonicalNormals[axis]).applyQuaternion(presentationQuaternion).normalize();
-      const plane = planes.get(axis);
-      plane.position.copy(pivotWorld);
-      plane.quaternion.setFromUnitVectors(canonicalNormals[axis], currentNormals[axis]);
-    });
-    orientationApplyCount += 1;
-    return true;
-  };
-
-  const applyEmphasis = (next) => {
-    const normalized = guideEmphasisState(next);
-    const changed = AXES.some((axis) => normalized[axis] !== emphasis[axis]);
-    if (!changed) return false;
-    emphasis = normalized;
-    AXES.forEach((axis) => DIRECTIONS.forEach((direction) => setDirectionalVisual(segments.get(`${axis}:${direction}`), emphasis[axis], direction)));
-    return true;
-  };
-  AXES.forEach((axis) => DIRECTIONS.forEach((direction) => setDirectionalVisual(segments.get(`${axis}:${direction}`), 'neutral', direction)));
-  applyOrientation({ w: 1, x: 0, y: 0, z: 0 });
-
-  return {
-    root,
-    anchors: Object.freeze(anchors),
-    applyOrientation,
-    applyEmphasis,
-    getEmphasis: () => emphasis,
-    getHeadMetrics: () => metrics,
-    getFramingRadius: () => metrics.framingRadius,
-    getPlaneState: () => Object.freeze(Object.fromEntries(AXES.map((axis) => {
-      const plane = planes.get(axis);
-      return [axis, Object.freeze({
-        position: Object.freeze({ x: plane.position.x, y: plane.position.y, z: plane.position.z }),
-        quaternion: Object.freeze({ x: plane.quaternion.x, y: plane.quaternion.y, z: plane.quaternion.z, w: plane.quaternion.w }),
-        normal: Object.freeze({ x: currentNormals[axis].x, y: currentNormals[axis].y, z: currentNormals[axis].z }),
-      })];
-    }))),
-    getSegment: (axis, direction) => segments.get(`${axis}:${direction}`) || null,
-    getOrientationApplyCount: () => orientationApplyCount,
-    getResourceCount: () => resources.size,
-    dispose() {
-      resources.forEach((resource) => resource.dispose?.());
-      resources.clear();
-      root.removeFromParent?.();
-    },
-  };
 }
