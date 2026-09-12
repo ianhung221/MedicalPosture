@@ -4,6 +4,7 @@ import {
   deriveHeadVisualMetrics,
   guideEmphasisState,
 } from './imu-spatial-guides.js';
+import { createHeadDeformer } from './imu-head-deformation.js';
 
 const THREE_MODULE_URL = new URL('../../assets/vendor/three-r185/three.module.min.js', import.meta.url).href;
 const GLTF_LOADER_URL = new URL('../../assets/vendor/three-r185/addons/loaders/GLTFLoader.js', import.meta.url).href;
@@ -73,6 +74,7 @@ export function createImuHeadRenderer({
   let framingRoot = null;
   let orientationRoot = null;
   let modelRoot = null;
+  const deformers = [];
   let host = null;
   let resizeObserver = null;
   let pendingFrame = null;
@@ -149,7 +151,7 @@ export function createImuHeadRenderer({
       return first ? reportError(initializationError(IMU_3D_ERROR_CODES.FIRST_RENDER_FAILED, 'first-render-size', 'LIVE stage canvas size is zero')) : false;
     }
     try {
-      orientationRoot.quaternion.set(latestQuaternion.x, latestQuaternion.y, latestQuaternion.z, latestQuaternion.w).normalize();
+      deformers.forEach((deform) => deform(latestQuaternion));
       renderer.render(scene, camera);
       renderCount += 1;
       emitGuideLayout(size);
@@ -267,7 +269,7 @@ export function createImuHeadRenderer({
           return false;
         }
         try {
-          const matte = new THREE.MeshStandardMaterial({ color: 0xc8c9ce, roughness: 0.92, metalness: 0 });
+          const matte = new THREE.MeshStandardMaterial({ color: 0xe3dfd7, roughness: 0.92, metalness: 0 });
           gltf.scene.traverse((object) => {
             if (!object.isMesh) return;
             if (Array.isArray(object.material)) object.material.forEach((material) => material?.dispose?.());
@@ -275,6 +277,8 @@ export function createImuHeadRenderer({
             object.material = matte;
             object.castShadow = false;
             object.receiveShadow = false;
+            deformers.push(createHeadDeformer(object.geometry));
+            object.frustumCulled = false;
           });
           loadingModelRoot.add(gltf.scene);
           loadingModelRoot.position.set(0, -0.12, 0);
@@ -283,14 +287,7 @@ export function createImuHeadRenderer({
           const headMetrics = deriveHeadVisualMetrics(modelBounds);
           framingRadius = headMetrics.framingRadius;
           framingTarget = { ...headMetrics.pivot };
-          // Move the rotation origin from the bust origin to the visual head center
-          // while preserving the model's neutral world-space placement.
-          orientationRoot.position.set(headMetrics.pivot.x, headMetrics.pivot.y, headMetrics.pivot.z);
-          modelRoot.position.set(
-            modelRoot.position.x - headMetrics.pivot.x,
-            modelRoot.position.y - headMetrics.pivot.y,
-            modelRoot.position.z - headMetrics.pivot.z,
-          );
+          // Fixed bust root; only the continuous neck/head deformation rotates.
           guideCreationCount += 1;
         } catch (error) {
           throw initializationError(IMU_3D_ERROR_CODES.MODEL_INIT_FAILED, 'model-init', error);
@@ -406,6 +403,7 @@ export function createImuHeadRenderer({
     framingRoot = null;
     orientationRoot = null;
     modelRoot = null;
+    deformers.length = 0;
     guideLayoutListener = null;
     latestGuideLayout = null;
     emittedGuideSignature = '';

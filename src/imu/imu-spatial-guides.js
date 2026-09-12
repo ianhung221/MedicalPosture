@@ -4,8 +4,8 @@ export const IMU_GUIDE_VISUAL_CONFIG = Object.freeze({
   headRegionHeightRatio: 0.66,
   headWidthToHeightRatio: 0.82,
   headDepthToHeightRatio: 0.94,
-  // The rotating model fits within a centered circle, leaving dedicated guide lanes.
-  modelDiameterRatio: 0.58,
+  // Frame the head, not the shoulder-to-shoulder rotation sphere.
+  modelDiameterRatio: 0.82,
 });
 
 export function classifyGuideDirection(angle, deadbandDegrees = IMU_GUIDE_VISUAL_CONFIG.deadbandDegrees) {
@@ -26,7 +26,7 @@ export function computeGuideCameraFraming({ radius = 1, aspect = 1, verticalFovD
   const safeAspect = Math.max(0.2, Number.isFinite(aspect) ? aspect : 1);
   const verticalFov = verticalFovDegrees * Math.PI / 180;
   const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * safeAspect);
-  // Fit the rotation-invariant model sphere inside the reserved composition circle.
+  // A head-sized frame; shoulders form a stable cropped bust at its base.
   const halfAngle = Math.atan(Math.tan(Math.min(verticalFov, horizontalFov) / 2)
     * IMU_GUIDE_VISUAL_CONFIG.modelDiameterRatio);
   return Object.freeze({ distance: safeRadius / Math.sin(halfAngle), offsetX: 0, verticalFov, horizontalFov });
@@ -42,17 +42,13 @@ export function deriveHeadVisualMetrics(bounds) {
   const headBottom = max.y - headHeight;
   const headWidth = Math.min(fullWidth, headHeight * IMU_GUIDE_VISUAL_CONFIG.headWidthToHeightRatio);
   const headDepth = Math.min(fullDepth, headHeight * IMU_GUIDE_VISUAL_CONFIG.headDepthToHeightRatio);
-  // Preserve the existing model pivot exactly; only camera framing changes.
+  // Camera target, not a rotation pivot. The neck deformation owns its pivot.
   const pivot = Object.freeze({
     x: (min.x + max.x) / 2,
-    y: headBottom + headHeight * 0.5,
+    y: headBottom + headHeight * 0.42,
     z: (min.z + max.z) / 2 + headDepth * 0.035,
   });
-  const framingRadius = Math.hypot(
-    Math.max(Math.abs(min.x - pivot.x), Math.abs(max.x - pivot.x)),
-    Math.max(Math.abs(min.y - pivot.y), Math.abs(max.y - pivot.y)),
-    Math.max(Math.abs(min.z - pivot.z), Math.abs(max.z - pivot.z)),
-  );
+  const framingRadius = headHeight * 0.60;
   return Object.freeze({ fullWidth, fullHeight, fullDepth, headBottom, headWidth, headHeight, headDepth, pivot, framingRadius });
 }
 
@@ -77,19 +73,19 @@ export function deriveGuideScreenLayout(width, height) {
     pitchSide: 'left',
     guides: Object.freeze({
       pitch: Object.freeze({
-        negativePath: cubic([.185, .485], [.16, .43], [.17, .34], [.23, .30]),
-        positivePath: cubic([.185, .515], [.16, .57], [.17, .66], [.23, .70]),
-        label: p(.085, .50),
+        negativePath: cubic([.275, .455], [.265, .36], [.28, .26], [.32, .21]),
+        positivePath: cubic([.275, .485], [.25, .67], [.29, .79], [.43, .75]),
+        label: p(.17, .62),
       }),
       roll: Object.freeze({
-        negativePath: cubic([.485, .145], [.43, .145], [.38, .16], [.34, .185]),
-        positivePath: cubic([.515, .145], [.57, .145], [.62, .16], [.66, .185]),
-        label: p(.50, .065),
+        negativePath: cubic([.485, .07], [.39, .05], [.27, .19], [.225, .40]),
+        positivePath: cubic([.515, .07], [.61, .05], [.73, .19], [.775, .40]),
+        label: p(.57, .035),
       }),
       yaw: Object.freeze({
-        positivePath: cubic([.485, .86], [.43, .86], [.38, .85], [.33, .835]),
-        negativePath: cubic([.515, .86], [.57, .86], [.62, .85], [.67, .835]),
-        label: p(.50, .935),
+        positivePath: cubic([.485, .555], [.34, .565], [.14, .52], [.215, .455]),
+        negativePath: cubic([.515, .555], [.66, .565], [.86, .52], [.785, .455]),
+        label: p(.875, .52),
       }),
     }),
   });

@@ -1213,7 +1213,7 @@
 .imu-guide-overlay { position: absolute; z-index: 4; inset: 0; width: 100%; height: 100%; overflow: visible; color: #704ce0; pointer-events: none; }
 .imu-guide-path { fill: none; stroke: currentColor; stroke-width: 1.25; stroke-linecap: round; opacity: .34; vector-effect: non-scaling-stroke; transition: opacity .16s ease, stroke-width .16s ease; }
 .imu-guide-path.is-neutral { opacity: .56; }
-.imu-guide-path.is-active { stroke-width: 2; opacity: .9; }
+.imu-guide-path.is-active { stroke-width: 2.6; opacity: .9; }
 .imu-guide-label { --imu-guide-x: 50%; --imu-guide-y: 50%; position: absolute; z-index: 5; left: var(--imu-guide-x); top: var(--imu-guide-y); display: grid; box-sizing: border-box; gap: .1rem; color: var(--imu-dark); line-height: 1.1; text-align: center; white-space: nowrap; opacity: 0; pointer-events: none; transform: translate(-50%, -50%); transition: opacity .16s ease; }
 .imu-guide-label.is-positioned { opacity: 1; }
 .imu-guide-label small { font-size: clamp(.58rem, 2.8cqi, .75rem); font-weight: 800; }
