@@ -4,7 +4,7 @@ import {
   deriveHeadVisualMetrics,
   guideEmphasisState,
 } from './imu-spatial-guides.js';
-import { createHeadDeformer } from './imu-head-deformation.js';
+import { createHeadDeformer, NECK_PIVOT } from './imu-head-deformation.js';
 
 const THREE_MODULE_URL = new URL('../../assets/vendor/three-r185/three.module.min.js', import.meta.url).href;
 const GLTF_LOADER_URL = new URL('../../assets/vendor/three-r185/addons/loaders/GLTFLoader.js', import.meta.url).href;
@@ -84,6 +84,7 @@ export function createImuHeadRenderer({
   let latestGuideLayout = null;
   let latestGuideEmphasis = guideEmphasisState();
   let emittedGuideSignature = '';
+  let headMetrics = null;
   let framingRadius = 1.2;
   let framingTarget = { x: 0, y: 0.72, z: 0 };
   let paused = false;
@@ -95,6 +96,7 @@ export function createImuHeadRenderer({
   let contextCount = 0;
   let modelLoadMs = 0;
   let guideCreationCount = 0;
+  let guideOrientationApplyCount = 0;
   let generation = 0;
 
   const reportError = (error) => {
@@ -134,13 +136,32 @@ export function createImuHeadRenderer({
   };
 
   const emitGuideLayout = (size) => {
-    if (!guideLayoutListener || size.width <= 0 || size.height <= 0) return;
-    const signature = `${size.width}:${size.height}:${latestGuideEmphasis.pitch}:${latestGuideEmphasis.roll}:${latestGuideEmphasis.yaw}`;
+    if (!guideLayoutListener || !modules || !camera || !modelRoot || !headMetrics || size.width <= 0 || size.height <= 0) return;
+    const poseKey = [latestQuaternion.x, latestQuaternion.y, latestQuaternion.z, latestQuaternion.w]
+      .map((value) => Number(value).toFixed(5)).join(':');
+    const signature = `${size.width}:${size.height}:${poseKey}:${latestGuideEmphasis.pitch}:${latestGuideEmphasis.roll}:${latestGuideEmphasis.yaw}`;
     if (signature === emittedGuideSignature && latestGuideLayout) return;
-    if (!latestGuideLayout || latestGuideLayout.width !== size.width || latestGuideLayout.height !== size.height) {
-      latestGuideLayout = deriveGuideScreenLayout(size.width, size.height);
-    }
+    const { THREE } = modules;
+    const pivot = new THREE.Vector3(
+      NECK_PIVOT[0] + modelRoot.position.x,
+      NECK_PIVOT[1] + modelRoot.position.y,
+      NECK_PIVOT[2] + modelRoot.position.z,
+    );
+    const projectPoint = (coordinates) => {
+      const projected = new THREE.Vector3(...coordinates)
+        .sub(pivot)
+        .applyQuaternion(latestQuaternion)
+        .add(pivot);
+      if (framingRoot) projected.add(framingRoot.position);
+      projected.project(camera);
+      return Object.freeze({
+        x: (projected.x + 1) * size.width / 2,
+        y: (1 - projected.y) * size.height / 2,
+      });
+    };
+    latestGuideLayout = deriveGuideScreenLayout(size.width, size.height, { headMetrics, projectPoint, poseKey });
     emittedGuideSignature = signature;
+    guideOrientationApplyCount += 1;
     guideLayoutListener(Object.freeze({ ...latestGuideLayout, emphasis: latestGuideEmphasis }));
   };
 
@@ -284,7 +305,7 @@ export function createImuHeadRenderer({
           loadingModelRoot.position.set(0, -0.12, 0);
           orientationRoot.updateWorldMatrix?.(true, true);
           const modelBounds = new THREE.Box3().setFromObject(loadingModelRoot);
-          const headMetrics = deriveHeadVisualMetrics(modelBounds);
+          headMetrics = deriveHeadVisualMetrics(modelBounds);
           framingRadius = headMetrics.framingRadius;
           framingTarget = { ...headMetrics.pivot };
           // Fixed bust root; only the continuous neck/head deformation rotates.
@@ -406,6 +427,7 @@ export function createImuHeadRenderer({
     deformers.length = 0;
     guideLayoutListener = null;
     latestGuideLayout = null;
+    headMetrics = null;
     emittedGuideSignature = '';
     framingRadius = 1.2;
     framingTarget = { x: 0, y: 0.72, z: 0 };
@@ -425,7 +447,7 @@ export function createImuHeadRenderer({
     dispose,
     getStatus: () => status,
     getError: () => lastError,
-    getDiagnostics: () => ({ status, renderCount, attachCount, modelLoadCount, contextCount, guideCreationCount, guideResourceCount: 0, guideOrientationApplyCount: 0, framingRadius, framingTarget: { ...framingTarget }, pendingFrame: pendingFrame !== null, attached: Boolean(host), paused, contextLost, modelLoadMs, error: lastError }),
+    getDiagnostics: () => ({ status, renderCount, attachCount, modelLoadCount, contextCount, guideCreationCount, guideResourceCount: 0, guideOrientationApplyCount, framingRadius, framingTarget: { ...framingTarget }, pendingFrame: pendingFrame !== null, attached: Boolean(host), paused, contextLost, modelLoadMs, error: lastError }),
   };
 }
 

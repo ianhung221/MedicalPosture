@@ -81,8 +81,12 @@ export function updateImuGuideLabelLayout(container, layout) {
   if (!layout) return;
   const overlay = container.querySelector('[data-imu-guide-overlay]');
   const viewBox = `0 0 ${layout.width} ${layout.height}`;
-  const geometryChanged = overlay?.getAttribute('viewBox') !== viewBox;
-  if (geometryChanged) overlay?.setAttribute('viewBox', viewBox);
+  const geometryKey = layout.geometryKey || viewBox;
+  const geometryChanged = overlay?.getAttribute('data-layout-key') !== geometryKey;
+  if (geometryChanged) {
+    overlay?.setAttribute('viewBox', viewBox);
+    overlay?.setAttribute('data-layout-key', geometryKey);
+  }
   ['pitch', 'roll', 'yaw'].forEach((axis) => {
     const guide = layout.guides[axis];
     ['negative', 'positive'].forEach((direction) => {

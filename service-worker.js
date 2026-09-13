@@ -1,4 +1,4 @@
-const CACHE_NAME = 'posture-health-shell-v24';
+const CACHE_NAME = 'posture-health-shell-v25';
 const CACHE_PREFIX = 'posture-health-shell-';
 const AI_CACHE_NAME = 'posture-ai-assets-v1';
 const AI_CACHE_PREFIX = 'posture-ai-assets-';
