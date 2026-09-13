@@ -251,7 +251,7 @@ test('renderer keeps one context/model, coalesces frames, reattaches, pauses and
 test('renderer shares one presentation quaternion between head deformation and guide projection', async () => {
   const source = await readFile(new URL('../../src/imu/imu-head-renderer.js', import.meta.url), 'utf8');
   assert.match(source, /orientationRoot\.add\(modelRoot\)/);
-  assert.match(source, /deriveGuideScreenLayout\(size\.width, size\.height, \{ headMetrics, projectPoint, poseKey \}\)/);
+  assert.match(source, /deriveGuideScreenLayout\(size\.width, size\.height, \{ headMetrics, projectPoint, poseKey, previousLayout: latestGuideLayout \}\)/);
   assert.match(source, /\.applyQuaternion\(latestQuaternion\)/);
   assert.doesNotMatch(source, /framingRoot\.add\(guideRig\.root\)|orientationRoot\.add\(guideRig\.root\)/);
   assert.match(source, /createHeadDeformer\(object\.geometry\)/);
@@ -281,7 +281,7 @@ test('Assessment uses one stable SVG guide overlay, arc-side values, and runtime
   const source = await readFile(new URL('../../src/pages/assessment-v3.page.js', import.meta.url), 'utf8');
   assert.match(source, /imu-head-canvas-host/);
   assert.equal((source.match(/<svg class="imu-guide-overlay"/g) || []).length, 1);
-  assert.match(source, /\['roll', 'pitch', 'yaw'\]\.flatMap/, 'six paths are generated once by the static view template');
+  assert.match(source, /\['roll', 'pitch', 'yaw'\]\.map/, 'three continuous bases and their emphasis overlays are generated once');
   assert.doesNotMatch(source, /imu-compact-telemetry|data-imu-card-(?:pitch|roll|yaw)|即時資料・角度/);
   assert.match(source, /data-imu-guide-label="pitch"/);
   assert.match(source, /data-imu-guide-label="roll"/);
@@ -400,16 +400,17 @@ test('head-adjacent semantic arcs and labels fit portrait tablet and landscape',
   }
 });
 
-test('fixed endpoints and neutral gaps follow verified sign directions', () => {
+test('continuous midpoints and fixed endpoints follow verified sign directions', () => {
   const { guides } = deriveGuideScreenLayout(1000, 1000);
   const coordinates = (path) => path.match(/-?\d+(?:\.\d+)?/g).map(Number);
   for (const axis of ['pitch', 'roll', 'yaw']) {
     const positive = coordinates(guides[axis].positivePath);
     const negative = coordinates(guides[axis].negativePath);
-    assert.ok(Math.hypot(positive[0] - negative[0], positive[1] - negative[1]) > 0);
-    if (axis === 'pitch') { assert.ok(positive[7] > positive[1]); assert.ok(negative[7] < negative[1]); }
-    if (axis === 'roll') { assert.ok(positive[6] > positive[0]); assert.ok(negative[6] < negative[0]); }
-    if (axis === 'yaw') { assert.ok(positive[6] < positive[0]); assert.ok(negative[6] > negative[0]); }
+    assert.deepEqual(positive.slice(0,2), negative.slice(0,2));
+    assert.equal((guides[axis].basePath.match(/M /g) || []).length, 1);
+    if (axis === 'pitch') { assert.ok(positive.at(-1) > positive[1]); assert.ok(negative.at(-1) < negative[1]); }
+    if (axis === 'roll') { assert.ok(positive.at(-2) > positive[0]); assert.ok(negative.at(-2) < negative[0]); }
+    if (axis === 'yaw') { assert.ok(positive.at(-2) < positive[0]); assert.ok(negative.at(-2) > negative[0]); }
   }
 });
 
@@ -479,11 +480,11 @@ test('telemetry changes update emphasis without rewriting paths or positioning l
   } };
   const layout = deriveGuideScreenLayout(320, 390);
   updateImuGuideLabelLayout(container, { ...layout, emphasis: guideEmphasisState() });
-  assert.equal(writes, 14, 'viewBox, pose key, six paths, and six label coordinates');
+  assert.equal(writes, 17, 'viewBox, pose key, nine paths, and six label coordinates');
   for (const angle of [3, 12, -25, 0, 60]) {
     updateImuGuideLabelLayout(container, { ...layout, emphasis: guideEmphasisState({pitch:angle,roll:angle,yaw:angle}) });
   }
-  assert.equal(writes, 14, 'emphasis-only updates cannot rewrite guide geometry');
+  assert.equal(writes, 17, 'emphasis-only updates cannot rewrite guide geometry');
   updateImuGuideLabelLayout(container, { ...deriveGuideScreenLayout(760, 500), emphasis: guideEmphasisState() });
-  assert.equal(writes, 28, 'resize updates geometry once');
+  assert.equal(writes, 34, 'resize updates geometry once');
 });

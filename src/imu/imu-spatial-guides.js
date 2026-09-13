@@ -53,141 +53,146 @@ export function deriveHeadVisualMetrics(bounds) {
   return Object.freeze({ fullWidth, fullHeight, fullDepth, headBottom, headWidth, headHeight, headDepth, pivot, framingRadius });
 }
 
-function point(x, y) { return Object.freeze({ x, y }); }
 
-function vector(x, y, z) { return Object.freeze([x, y, z]); }
+function point(x, y) { return { x, y }; }
+function vector(x, y, z) { return [x, y, z]; }
 
+// Both halves start at EXACTLY the same midpoint. Base rendering reverses
+// the negative half and joins the positive half without another move command.
 export function createHeadRelativeGuideGeometry(metrics) {
   if (!metrics) return null;
-  const { pivot, headBottom, headHeight: h, headWidth, headDepth } = metrics;
-  const halfWidth = headWidth * 0.52;
-  const earY = headBottom + h * 0.52;
-  const crownY = headBottom + h * 1.01;
-  const chinY = headBottom + h * 0.10;
-  const frontZ = pivot.z + headDepth * 0.52;
-  const sideZ = pivot.z + headDepth * 0.06;
-  const pitchX = pivot.x - halfWidth * 1.08;
-  const curve = (points, label) => Object.freeze({
-    points: Object.freeze(points.map((value) => Object.freeze(value))),
-    label: Object.freeze(label),
-  });
-  return Object.freeze({
-    pitch: Object.freeze({
-      negative: curve([
-        vector(pitchX, earY, frontZ),
-        vector(pitchX, headBottom + h * 0.67, pivot.z + (frontZ - pivot.z) * 0.98),
-        vector(pivot.x - halfWidth * 0.86, headBottom + h * 0.88, pivot.z + headDepth * 0.36),
-        vector(pivot.x - halfWidth * 0.54, headBottom + h * 0.94, pivot.z + headDepth * 0.20),
-      ], vector(pitchX - halfWidth * 0.20, headBottom + h * 0.32, frontZ)),
-      positive: curve([
-        vector(pitchX, earY - h * 0.025, frontZ),
-        vector(pitchX - halfWidth * 0.08, headBottom + h * 0.35, pivot.z + (frontZ - pivot.z) * 1.01),
-        vector(pivot.x - halfWidth * 0.80, chinY, pivot.z + headDepth * 0.39),
-        vector(pivot.x - halfWidth * 0.32, chinY - h * 0.01, pivot.z + headDepth * 0.29),
-      ], vector(pitchX - halfWidth * 0.20, headBottom + h * 0.32, frontZ)),
-    }),
-    roll: Object.freeze({
-      negative: curve([
-        vector(pivot.x - halfWidth * 0.025, crownY, sideZ),
-        vector(pivot.x - halfWidth * 0.35, crownY + h * 0.04, sideZ),
-        vector(pivot.x - halfWidth * 0.88, headBottom + h * 0.83, sideZ),
-        vector(pivot.x - halfWidth * 1.08, earY, sideZ),
-      ], vector(pivot.x + halfWidth * 0.28, crownY + h * 0.08, sideZ)),
-      positive: curve([
-        vector(pivot.x + halfWidth * 0.025, crownY, sideZ),
-        vector(pivot.x + halfWidth * 0.35, crownY + h * 0.04, sideZ),
-        vector(pivot.x + halfWidth * 0.88, headBottom + h * 0.83, sideZ),
-        vector(pivot.x + halfWidth * 1.08, earY, sideZ),
-      ], vector(pivot.x + halfWidth * 0.28, crownY + h * 0.08, sideZ)),
-    }),
-    yaw: Object.freeze({
-      positive: curve([
-        vector(pivot.x - halfWidth * 0.025, earY, frontZ + headDepth * 0.05),
-        vector(pivot.x - halfWidth * 0.38, earY + h * 0.01, frontZ + headDepth * 0.04),
-        vector(pivot.x - halfWidth * 0.92, earY, pivot.z + headDepth * 0.25),
-        vector(pivot.x - halfWidth * 1.10, earY - h * 0.025, sideZ),
-      ], vector(pivot.x + halfWidth * 1.33, earY + h * 0.02, pivot.z + headDepth * 0.20)),
-      negative: curve([
-        vector(pivot.x + halfWidth * 0.025, earY, frontZ + headDepth * 0.05),
-        vector(pivot.x + halfWidth * 0.38, earY + h * 0.01, frontZ + headDepth * 0.04),
-        vector(pivot.x + halfWidth * 0.92, earY, pivot.z + headDepth * 0.25),
-        vector(pivot.x + halfWidth * 1.10, earY - h * 0.025, sideZ),
-      ], vector(pivot.x + halfWidth * 1.33, earY + h * 0.02, pivot.z + headDepth * 0.20)),
-    }),
-  });
-}
-
-function pathFromProjectedPoints(points) {
-  const [a, b, c, d] = points;
-  return `M ${a.x} ${a.y} C ${b.x} ${b.y}, ${c.x} ${c.y}, ${d.x} ${d.y}`;
-}
-
-function clampLabel(label, width, height) {
-  const insetX = Math.min(46, width * 0.14);
-  const insetY = Math.min(28, height * 0.08);
-  return point(
-    Math.max(insetX, Math.min(width - insetX, label.x)),
-    Math.max(insetY, Math.min(height - insetY, label.y)),
-  );
-}
-
-// Coordinates use a centered square inside any host aspect ratio. Curves and
-// labels are calculated on resize only; telemetry only changes emphasis.
-export function deriveGuideScreenLayout(width, height, { headMetrics = null, projectPoint = null, poseKey = 'neutral' } = {}) {
-  if (![width, height].every(Number.isFinite) || width <= 0 || height <= 0) return null;
-  if (headMetrics && typeof projectPoint === 'function') {
-    const spatial = createHeadRelativeGuideGeometry(headMetrics);
-    const guides = {};
-    for (const axis of ['pitch', 'roll', 'yaw']) {
-      const negative = spatial[axis].negative;
-      const positive = spatial[axis].positive;
-      const projectedNegative = negative.points.map(projectPoint);
-      const projectedPositive = positive.points.map(projectPoint);
-      const label = clampLabel(projectPoint(positive.label), width, height);
-      guides[axis] = Object.freeze({
-        negativePath: pathFromProjectedPoints(projectedNegative),
-        positivePath: pathFromProjectedPoints(projectedPositive),
-        label,
-      });
-    }
-    return Object.freeze({
-      width,
-      height,
-      geometryKey: `${width}:${height}:${poseKey}`,
-      modelEnvelope: Object.freeze({ centerX: width / 2, centerY: height / 2, radius: Math.min(width, height) * IMU_GUIDE_VISUAL_CONFIG.modelDiameterRatio / 2 }),
-      pitchSide: 'left',
-      guides: Object.freeze(guides),
-    });
-  }
-  const size = Math.min(width, height);
-  const originX = (width - size) / 2;
-  const originY = (height - size) / 2;
-  const p = (x, y) => point(originX + x * size, originY + y * size);
-  const cubic = (...coords) => {
-    const [a, b, c, d] = coords.map(([x, y]) => p(x, y));
-    return `M ${a.x} ${a.y} C ${b.x} ${b.y}, ${c.x} ${c.y}, ${d.x} ${d.y}`;
+  const { pivot, headBottom: bottom, headHeight: h, headWidth: w, headDepth: d } = metrics;
+  const gap = h * .12;
+  const rx = w / 2 + gap;
+  const front = pivot.z + d / 2 + gap;
+  const ear = bottom + h * .56;
+  const crown = bottom + h + gap;
+  const side = pivot.z + d * .12;
+  const v = (x, y, z) => vector(pivot.x + x, y, z);
+  const half = (points, label) => ({ points, label });
+  const pitchMid = v(-rx, ear, front);
+  const rollMid = v(0, crown, side);
+  const yawMid = v(0, ear, front);
+  const pitchLabel = v(-rx - gap * .5, ear - h * .20, front);
+  const rollLabel = v(0, crown + gap * .35, side);
+  const yawLabel = v(rx + gap * .35, ear, side);
+  return {
+    pitch: {
+      negative: half([pitchMid, v(-rx, ear + h * .22, front), v(-rx * .85, crown, front - d * .16), v(-rx * .55, crown, front - d * .28)], pitchLabel),
+      positive: half([pitchMid, v(-rx, ear - h * .22, front), v(-rx * .85, bottom - gap * .25, front - d * .16), v(-rx * .45, bottom - gap * .25, front - d * .28)], pitchLabel),
+    },
+    roll: {
+      negative: half([rollMid, v(-rx * .55, crown, side), v(-rx, ear + h * .28, side), v(-rx, ear, side)], rollLabel),
+      positive: half([rollMid, v(rx * .55, crown, side), v(rx, ear + h * .28, side), v(rx, ear, side)], rollLabel),
+    },
+    yaw: {
+      positive: half([yawMid, v(-rx * .55, ear, front), v(-rx, ear, side + d * .35), v(-rx, ear, side)], yawLabel),
+      negative: half([yawMid, v(rx * .55, ear, front), v(rx, ear, side + d * .35), v(rx, ear, side)], yawLabel),
+    },
   };
-  const radius = size * IMU_GUIDE_VISUAL_CONFIG.modelDiameterRatio / 2;
-  return Object.freeze({
-    width, height, geometryKey: `${width}:${height}:fallback`,
-    modelEnvelope: Object.freeze({ centerX: width / 2, centerY: height / 2, radius }),
-    pitchSide: 'left',
-    guides: Object.freeze({
-      pitch: Object.freeze({
-        negativePath: cubic([.275, .455], [.265, .36], [.28, .26], [.32, .21]),
-        positivePath: cubic([.275, .485], [.25, .67], [.29, .79], [.43, .75]),
-        label: p(.17, .62),
-      }),
-      roll: Object.freeze({
-        negativePath: cubic([.485, .07], [.39, .05], [.27, .19], [.225, .40]),
-        positivePath: cubic([.515, .07], [.61, .05], [.73, .19], [.775, .40]),
-        label: p(.57, .035),
-      }),
-      yaw: Object.freeze({
-        positivePath: cubic([.485, .555], [.34, .565], [.14, .52], [.215, .455]),
-        negativePath: cubic([.515, .555], [.66, .565], [.86, .52], [.785, .455]),
-        label: p(.875, .52),
-      }),
-    }),
+}
+
+function sampleCurve(points, steps = 24) {
+  return Array.from({ length: steps + 1 }, (_, index) => {
+    const t = index / steps, s = 1 - t;
+    return points[0].map((_, axis) => s ** 3 * points[0][axis]
+      + 3 * s * s * t * points[1][axis] + 3 * s * t * t * points[2][axis] + t ** 3 * points[3][axis]);
   });
+}
+function path(points) {
+  return points.map((p, i) => `${i ? 'L' : 'M'} ${p.x} ${p.y}`).join(' ');
+}
+const overlaps = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+const inside = (p, r) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
+function headHull(metrics, projectPoint) {
+  const { pivot, headBottom, headHeight: h, headWidth: w, headDepth: d } = metrics;
+  const points = [];
+  for (let lat = 0; lat <= 10; lat++) {
+    const theta = Math.PI * lat / 10;
+    for (let lon = 0; lon < 20; lon++) {
+      const phi = 2 * Math.PI * lon / 20;
+      points.push(projectPoint([pivot.x + w * .5 * Math.sin(theta) * Math.cos(phi),
+        headBottom + h * .5 + h * .5 * Math.cos(theta),
+        pivot.z + d * .5 * Math.sin(theta) * Math.sin(phi)]));
+    }
+  }
+  // Convex silhouette of the head-sized ellipsoid, not the fixed shoulders.
+  const sorted = points.sort((a, b) => a.x - b.x || a.y - b.y);
+  const cross = (a,b,c) => (b.x-a.x)*(c.y-a.y)-(b.y-a.y)*(c.x-a.x);
+  const build = (list) => {
+    const hull = [];
+    for (const p of list) { while (hull.length > 1 && cross(hull.at(-2), hull.at(-1), p) <= 0) hull.pop(); hull.push(p); }
+    return hull;
+  };
+  return [...build(sorted).slice(0,-1), ...build([...sorted].reverse()).slice(0,-1)];
+}
+function inPolygon(p, polygon) {
+  let within = false;
+  for (let i=0,j=polygon.length-1;i<polygon.length;j=i++) {
+    const a=polygon[i],b=polygon[j];
+    if ((a.y>p.y)!==(b.y>p.y) && p.x < (b.x-a.x)*(p.y-a.y)/(b.y-a.y)+a.x) within=!within;
+  }
+  return within;
+}
+
+// Bounded candidates follow the projected anchor. Previous candidate preference
+// adds hysteresis; no animation loop, DOM measurements or persistent sensor state.
+export function placeGuideLabels(guides, width, height, hull = [], previous = null) {
+  const font = Math.max(9.6, Math.min(15.2, width * .036));
+  const labelW = font * 4.4, labelH = font * 2.55;
+  const step = Math.max(labelH * .65, Math.min(width,height) * .035);
+  const placed = [], result = {};
+  const strokes = Object.values(guides).flatMap(g => g.samples || []);
+  const arrows = Object.values(guides).flatMap(g => g.ends || []);
+  for (const axis of ['roll','pitch','yaw']) {
+    const g = guides[axis], anchor = g.anchor;
+    const preferred = axis === 'roll' ? [0,-1] : axis === 'pitch' ? [-1,0] : [1,0];
+    const candidates = [[0,0], ...[1,2,3].flatMap(n => [
+      [preferred[0]*n,preferred[1]*n],
+      [preferred[0]*n + preferred[1],preferred[1]*n - preferred[0]],
+      [preferred[0]*n - preferred[1],preferred[1]*n + preferred[0]],
+    ])];
+    let best;
+    candidates.forEach(([dx,dy], index) => {
+      const x=Math.max(labelW/2+3,Math.min(width-labelW/2-3,anchor.x+dx*step));
+      const y=Math.max(labelH/2+3,Math.min(height-labelH/2-3,anchor.y+dy*step));
+      const box={x:x-labelW/2,y:y-labelH/2,w:labelW,h:labelH};
+      const probes=[point(x,y),point(box.x,box.y),point(box.x+box.w,box.y),
+        point(box.x,box.y+box.h),point(box.x+box.w,box.y+box.h)];
+      const headHit=probes.some(p=>inPolygon(p,hull)) || hull.some(p=>inside(p,box));
+      const strokeHit=strokes.some(p=>inside(p,{x:box.x-4,y:box.y-4,w:box.w+8,h:box.h+8}));
+      const arrowHit=arrows.some(p=>inside(p,{x:box.x-9,y:box.y-9,w:box.w+18,h:box.h+18}));
+      const labelHit=placed.some(r=>overlaps(box,r));
+      const distance=Math.hypot(x-anchor.x,y-anchor.y);
+      const score=Number(labelHit)*10000+Number(headHit)*5000+Number(arrowHit)*2000
+        +Number(strokeHit)*1000+distance/step+(previous?.guides?.[axis]?.label?.candidate === index ? -1.25 : 0);
+      if (!best || score<best.score) best={x,y,candidate:index,score,box};
+    });
+    placed.push(best.box);
+    result[axis]={x:best.x,y:best.y,candidate:best.candidate};
+  }
+  return result;
+}
+
+export function deriveGuideScreenLayout(width, height, { headMetrics = null, projectPoint = null, poseKey = 'neutral', previousLayout = null } = {}) {
+  if (![width,height].every(Number.isFinite) || width<=0 || height<=0) return null;
+  // Deterministic preview only; live always supplies model metrics and projection.
+  const metrics = headMetrics || deriveHeadVisualMetrics({min:{x:-1.519,y:-.757,z:-.729},max:{x:1.519,y:1.443,z:.729}});
+  const scale=Math.min(width,height)*.30;
+  const project=projectPoint || (([x,y])=>point(width/2+x*scale,height*.65-y*scale));
+  const spatial=createHeadRelativeGuideGeometry(metrics), guides={};
+  for (const axis of ['pitch','roll','yaw']) {
+    const negative=sampleCurve(spatial[axis].negative.points).map(project);
+    const positive=sampleCurve(spatial[axis].positive.points).map(project);
+    const samples=[...negative.slice().reverse(),...positive.slice(1)];
+    guides[axis]={
+      basePath:path(samples), negativePath:path(negative), positivePath:path(positive),
+      anchor:project(spatial[axis].positive.label), samples, ends:[negative.at(-1),positive.at(-1)],
+    };
+  }
+  const labels=placeGuideLabels(guides,width,height,headHull(metrics,project),previousLayout);
+  for (const axis of ['pitch','roll','yaw']) guides[axis].label=labels[axis];
+  return {width,height,geometryKey:`${width}:${height}:${projectPoint ? poseKey : 'fallback'}`,
+    modelEnvelope:{centerX:width/2,centerY:height/2,radius:Math.min(width,height)*IMU_GUIDE_VISUAL_CONFIG.modelDiameterRatio/2},
+    pitchSide:'left',guides};
 }
