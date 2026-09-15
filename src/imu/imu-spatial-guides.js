@@ -1,5 +1,6 @@
 // Head-relative presentation guides. Geometry is stable in head-local space;
 // only its 3D-to-2D projection changes with the presentation quaternion.
+import { IMU_HEAD_ANATOMY, IMU_GUIDE_CLEARANCE } from './imu-head-anatomy.js';
 export const IMU_GUIDE_VISUAL_CONFIG = Object.freeze({
   deadbandDegrees: 2.5,
   headRegionHeightRatio: 0.66,
@@ -55,52 +56,52 @@ export function deriveHeadVisualMetrics(bounds) {
 
 
 function point(x, y) { return { x, y }; }
-function vector(x, y, z) { return [x, y, z]; }
 
 // Both halves start at EXACTLY the same midpoint. Base rendering reverses
 // the negative half and joins the positive half without another move command.
-export function createHeadRelativeGuideGeometry(metrics) {
-  if (!metrics) return null;
-  const { pivot, headBottom: bottom, headHeight: h, headWidth: w, headDepth: d } = metrics;
-  const gap = h * .12;
-  const rx = w / 2 + gap;
-  const front = pivot.z + d / 2 + gap;
-  const ear = bottom + h * .56;
-  const crown = bottom + h + gap;
-  const side = pivot.z + d * .12;
-  const v = (x, y, z) => vector(pivot.x + x, y, z);
+export function createHeadRelativeGuideGeometry(anchors = IMU_HEAD_ANATOMY.anchors, clearance = IMU_GUIDE_CLEARANCE) {
+  const add = (p, offset) => p.map((v, i) => v + offset[i]);
   const half = (points, label) => ({ points, label });
-  const pitchMid = v(-rx, ear, front);
-  const rollMid = v(0, crown, side);
-  const yawMid = v(0, ear, front);
-  const pitchLabel = v(-rx - gap * .5, ear - h * .20, front);
-  const rollLabel = v(0, crown + gap * .35, side);
-  const yawLabel = v(rx + gap * .35, ear, side);
-  // Quarter-ellipse handles: matched midpoint tangents and rounded ends.
-  // Keep the existing shell extent and label anchors; only reshape the curves.
+  const chin = add(anchors.chinFront, clearance.pitch);
+  const forehead = add(anchors.foreheadFront, clearance.pitch);
+  const pitchMid = add(anchors.noseFront, clearance.pitch);
+  const rollMid = add(anchors.crown, clearance.crown);
+  const yawMid = add(anchors.noseFront, clearance.nose);
+  const left = add(anchors.leftEar, clearance.leftEar);
+  const right = add(anchors.rightEar, clearance.rightEar);
+  const pitchLabel = add(pitchMid, [-.08, -.12, 0]);
+  const rollLabel = add(rollMid, [0, .05, 0]);
+  const yawLabel = add(right, [.06, -.06, 0]);
+  // Rounded quarter-ellipse handles, with opposing equal tangents at each
+  // shared divider. Endpoint heights/depths come from the actual anatomy.
   const k = 4 * (Math.sqrt(2) - 1) / 3;
-  const pitchEndX = -rx * .55;
-  const pitchEndZ = front - d * .28;
-  const pitchRadiusX = -rx - pitchEndX;
-  const pitchRadiusZ = front - pitchEndZ;
-  const pitchRadiusY = crown - ear;
-  const rollRadiusY = crown - ear;
-  const yawRadiusZ = front - side;
+  const pitchHandle = k * Math.min(forehead[1] - pitchMid[1], pitchMid[1] - chin[1]);
+  const pitchHalf = (end, sign) => half([pitchMid,
+    add(pitchMid, [0, sign * pitchHandle, 0]),
+    [end[0], end[1], end[2] + k * (pitchMid[2] - end[2])], end], pitchLabel);
+  const rollHalf = (end) => half([rollMid,
+    [rollMid[0] + k * (end[0] - rollMid[0]), rollMid[1], rollMid[2]],
+    [end[0], end[1] + k * (rollMid[1] - end[1]), end[2]], end], rollLabel);
+  const yawHalf = (end) => half([yawMid,
+    [yawMid[0] + k * (end[0] - yawMid[0]), yawMid[1], yawMid[2]],
+    [end[0], end[1], end[2] + k * (yawMid[2] - end[2])], end], yawLabel);
   return {
     pitch: {
-      negative: half([pitchMid, v(-rx, ear + k * pitchRadiusY, front), v(pitchEndX + k * pitchRadiusX, crown, pitchEndZ + k * pitchRadiusZ), v(pitchEndX, crown, pitchEndZ)], pitchLabel),
-      positive: half([pitchMid, v(-rx, ear - k * pitchRadiusY, front), v(pitchEndX + k * pitchRadiusX, ear - pitchRadiusY, pitchEndZ + k * pitchRadiusZ), v(pitchEndX, ear - pitchRadiusY, pitchEndZ)], pitchLabel),
+      negative: pitchHalf(forehead, 1),
+      positive: pitchHalf(chin, -1),
     },
     roll: {
-      negative: half([rollMid, v(-k * rx, crown, side), v(-rx, ear + k * rollRadiusY, side), v(-rx, ear, side)], rollLabel),
-      positive: half([rollMid, v(k * rx, crown, side), v(rx, ear + k * rollRadiusY, side), v(rx, ear, side)], rollLabel),
+      negative: rollHalf(left), positive: rollHalf(right),
     },
     yaw: {
-      positive: half([yawMid, v(-k * rx, ear, front), v(-rx, ear, side + k * yawRadiusZ), v(-rx, ear, side)], yawLabel),
-      negative: half([yawMid, v(k * rx, ear, front), v(rx, ear, side + k * yawRadiusZ), v(rx, ear, side)], yawLabel),
+      positive: yawHalf(left), negative: yawHalf(right),
     },
   };
 }
+
+// Build model-local geometry once. Telemetry only changes emphasis; orientation
+// only reprojects these points. Camera/label hull metrics do not define anatomy.
+const MODEL_GUIDES = createHeadRelativeGuideGeometry();
 
 function sampleCurve(points, steps = 24) {
   return Array.from({ length: steps + 1 }, (_, index) => {
@@ -184,20 +185,23 @@ export function placeGuideLabels(guides, width, height, hull = [], previous = nu
   return result;
 }
 
-export function deriveGuideScreenLayout(width, height, { headMetrics = null, projectPoint = null, poseKey = 'neutral', previousLayout = null } = {}) {
+export function deriveGuideScreenLayout(width, height, { headMetrics = null, projectPoint = null, modelOffset = [0, -.12, 0], poseKey = 'neutral', previousLayout = null } = {}) {
   if (![width,height].every(Number.isFinite) || width<=0 || height<=0) return null;
   // Deterministic preview only; live always supplies model metrics and projection.
   const metrics = headMetrics || deriveHeadVisualMetrics({min:{x:-1.519,y:-.757,z:-.729},max:{x:1.519,y:1.443,z:.729}});
   const scale=Math.min(width,height)*.30;
   const project=projectPoint || (([x,y])=>point(width/2+x*scale,height*.65-y*scale));
-  const spatial=createHeadRelativeGuideGeometry(metrics), guides={};
+  const spatial=MODEL_GUIDES, guides={};
+  // Existing projectPoint expects rest-world coordinates, as does headHull.
+  // Apply modelRoot translation exactly once BEFORE the shared pivot rotation.
+  const projectModel = (p) => project(p.map((v, i) => v + modelOffset[i]));
   for (const axis of ['pitch','roll','yaw']) {
-    const negative=sampleCurve(spatial[axis].negative.points).map(project);
-    const positive=sampleCurve(spatial[axis].positive.points).map(project);
+    const negative=sampleCurve(spatial[axis].negative.points).map(projectModel);
+    const positive=sampleCurve(spatial[axis].positive.points).map(projectModel);
     const samples=[...negative.slice().reverse(),...positive.slice(1)];
     guides[axis]={
       basePath:path(samples), negativePath:path(negative), positivePath:path(positive),
-      anchor:project(spatial[axis].positive.label), samples, ends:[negative.at(-1),positive.at(-1)],
+      anchor:projectModel(spatial[axis].positive.label), samples, ends:[negative.at(-1),positive.at(-1)],
     };
   }
   const labels=placeGuideLabels(guides,width,height,headHull(metrics,project),previousLayout);

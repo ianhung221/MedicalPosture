@@ -159,7 +159,8 @@ export function createImuHeadRenderer({
         y: (1 - projected.y) * size.height / 2,
       });
     };
-    latestGuideLayout = deriveGuideScreenLayout(size.width, size.height, { headMetrics, projectPoint, poseKey, previousLayout: latestGuideLayout });
+    const modelOffset = [modelRoot.position.x, modelRoot.position.y, modelRoot.position.z];
+    latestGuideLayout = deriveGuideScreenLayout(size.width, size.height, { headMetrics, projectPoint, modelOffset, poseKey, previousLayout: latestGuideLayout });
     emittedGuideSignature = signature;
     guideOrientationApplyCount += 1;
     guideLayoutListener(Object.freeze({ ...latestGuideLayout, emphasis: latestGuideEmphasis }));
