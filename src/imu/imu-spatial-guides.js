@@ -76,18 +76,28 @@ export function createHeadRelativeGuideGeometry(metrics) {
   const pitchLabel = v(-rx - gap * .5, ear - h * .20, front);
   const rollLabel = v(0, crown + gap * .35, side);
   const yawLabel = v(rx + gap * .35, ear, side);
+  // Quarter-ellipse handles: matched midpoint tangents and rounded ends.
+  // Keep the existing shell extent and label anchors; only reshape the curves.
+  const k = 4 * (Math.sqrt(2) - 1) / 3;
+  const pitchEndX = -rx * .55;
+  const pitchEndZ = front - d * .28;
+  const pitchRadiusX = -rx - pitchEndX;
+  const pitchRadiusZ = front - pitchEndZ;
+  const pitchRadiusY = crown - ear;
+  const rollRadiusY = crown - ear;
+  const yawRadiusZ = front - side;
   return {
     pitch: {
-      negative: half([pitchMid, v(-rx, ear + h * .22, front), v(-rx * .85, crown, front - d * .16), v(-rx * .55, crown, front - d * .28)], pitchLabel),
-      positive: half([pitchMid, v(-rx, ear - h * .22, front), v(-rx * .85, bottom - gap * .25, front - d * .16), v(-rx * .45, bottom - gap * .25, front - d * .28)], pitchLabel),
+      negative: half([pitchMid, v(-rx, ear + k * pitchRadiusY, front), v(pitchEndX + k * pitchRadiusX, crown, pitchEndZ + k * pitchRadiusZ), v(pitchEndX, crown, pitchEndZ)], pitchLabel),
+      positive: half([pitchMid, v(-rx, ear - k * pitchRadiusY, front), v(pitchEndX + k * pitchRadiusX, ear - pitchRadiusY, pitchEndZ + k * pitchRadiusZ), v(pitchEndX, ear - pitchRadiusY, pitchEndZ)], pitchLabel),
     },
     roll: {
-      negative: half([rollMid, v(-rx * .55, crown, side), v(-rx, ear + h * .28, side), v(-rx, ear, side)], rollLabel),
-      positive: half([rollMid, v(rx * .55, crown, side), v(rx, ear + h * .28, side), v(rx, ear, side)], rollLabel),
+      negative: half([rollMid, v(-k * rx, crown, side), v(-rx, ear + k * rollRadiusY, side), v(-rx, ear, side)], rollLabel),
+      positive: half([rollMid, v(k * rx, crown, side), v(rx, ear + k * rollRadiusY, side), v(rx, ear, side)], rollLabel),
     },
     yaw: {
-      positive: half([yawMid, v(-rx * .55, ear, front), v(-rx, ear, side + d * .35), v(-rx, ear, side)], yawLabel),
-      negative: half([yawMid, v(rx * .55, ear, front), v(rx, ear, side + d * .35), v(rx, ear, side)], yawLabel),
+      positive: half([yawMid, v(-k * rx, ear, front), v(-rx, ear, side + k * yawRadiusZ), v(-rx, ear, side)], yawLabel),
+      negative: half([yawMid, v(k * rx, ear, front), v(rx, ear, side + k * yawRadiusZ), v(rx, ear, side)], yawLabel),
     },
   };
 }
