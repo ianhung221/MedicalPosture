@@ -64,7 +64,10 @@ export function createHeadRelativeGuideGeometry(anchors = IMU_HEAD_ANATOMY.ancho
   const half = (points, label) => ({ points, label });
   const chin = add(anchors.chinFront, clearance.pitch);
   const forehead = add(anchors.foreheadFront, clearance.pitch);
-  const pitchMid = add(anchors.noseFront, clearance.pitch);
+  // Divider at eye-level, with anterior extent clearing the nose. Endpoints
+  // remain upper forehead / lower chin, not a 2D-designed silhouette.
+  const pitchMid = add([anchors.eyeLevelFront[0], anchors.eyeLevelFront[1],
+    Math.max(anchors.eyeLevelFront[2], anchors.noseFront[2])], clearance.pitch);
   const rollMid = add(anchors.crown, clearance.crown);
   const yawMid = add(anchors.noseFront, clearance.nose);
   const left = add(anchors.leftEar, clearance.leftEar);
@@ -103,7 +106,7 @@ export function createHeadRelativeGuideGeometry(anchors = IMU_HEAD_ANATOMY.ancho
 // only reprojects these points. Camera/label hull metrics do not define anatomy.
 const MODEL_GUIDES = createHeadRelativeGuideGeometry();
 
-function sampleCurve(points, steps = 24) {
+function sampleCurve(points, steps = 48) {
   return Array.from({ length: steps + 1 }, (_, index) => {
     const t = index / steps, s = 1 - t;
     return points[0].map((_, axis) => s ** 3 * points[0][axis]
@@ -112,6 +115,22 @@ function sampleCurve(points, steps = 24) {
 }
 function path(points) {
   return points.map((p, i) => `${i ? 'L' : 'M'} ${p.x} ${p.y}`).join(' ');
+}
+
+// Occlusion creates subpaths, not additional semantic guides. Never connect
+// across a hidden sample, and never attach markers at an occlusion cut.
+export function visibleGuidePath(samples) {
+  const runs = []; let run = [];
+  for (const p of samples) {
+    if (p.visible !== false) run.push(p);
+    else { if (run.length > 1) runs.push(path(run)); run = []; }
+  }
+  if (run.length > 1) runs.push(path(run));
+  return runs.join(' ');
+}
+function endpointArrow(samples) {
+  const tail = samples.slice(-2);
+  return tail.length === 2 && tail.every(p => p.visible !== false) ? path(tail) : '';
 }
 const overlaps = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 const inside = (p, r) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
@@ -194,19 +213,27 @@ export function deriveGuideScreenLayout(width, height, { headMetrics = null, pro
   const spatial=MODEL_GUIDES, guides={};
   // Existing projectPoint expects rest-world coordinates, as does headHull.
   // Apply modelRoot translation exactly once BEFORE the shared pivot rotation.
-  const projectModel = (p) => project(p.map((v, i) => v + modelOffset[i]));
+  const projectModel = (p) => project(p.map((v, i) => v + modelOffset[i]), true);
   for (const axis of ['pitch','roll','yaw']) {
     const negative=sampleCurve(spatial[axis].negative.points).map(projectModel);
     const positive=sampleCurve(spatial[axis].positive.points).map(projectModel);
     const samples=[...negative.slice().reverse(),...positive.slice(1)];
+    const visible = samples.filter(p => p.visible !== false);
+    const preferredAnchor = projectModel(spatial[axis].positive.label);
+    // UI labels never disappear with hidden geometry. Prefer the closest
+    // surviving guide sample; all-hidden falls back to the projected anchor.
+    const anchor = visible.length ? visible.reduce((best,p) =>
+      Math.hypot(p.x-preferredAnchor.x,p.y-preferredAnchor.y) < Math.hypot(best.x-preferredAnchor.x,best.y-preferredAnchor.y) ? p : best) : preferredAnchor;
+    const negativeArrowPath=endpointArrow(negative), positiveArrowPath=endpointArrow(positive);
     guides[axis]={
-      basePath:path(samples), negativePath:path(negative), positivePath:path(positive),
-      anchor:projectModel(spatial[axis].positive.label), samples, ends:[negative.at(-1),positive.at(-1)],
+      basePath:visibleGuidePath(samples), negativePath:visibleGuidePath(negative), positivePath:visibleGuidePath(positive),
+      negativeArrowPath, positiveArrowPath,
+      anchor, samples:visible, ends:[...(negativeArrowPath ? [negative.at(-1)] : []), ...(positiveArrowPath ? [positive.at(-1)] : [])],
     };
   }
   const labels=placeGuideLabels(guides,width,height,headHull(metrics,project),previousLayout);
   for (const axis of ['pitch','roll','yaw']) guides[axis].label=labels[axis];
   return {width,height,geometryKey:`${width}:${height}:${projectPoint ? poseKey : 'fallback'}`,
     modelEnvelope:{centerX:width/2,centerY:height/2,radius:Math.min(width,height)*IMU_GUIDE_VISUAL_CONFIG.modelDiameterRatio/2},
-    pitchSide:'left',guides};
+    pitchSide:'center',guides};
 }

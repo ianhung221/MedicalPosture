@@ -90,7 +90,13 @@ export function updateImuGuideLabelLayout(container, layout) {
   ['pitch', 'roll', 'yaw'].forEach((axis) => {
     const guide = layout.guides[axis];
     const basePath = container.querySelector(`[data-imu-guide-base="${axis}"]`);
-    if (geometryChanged) basePath?.setAttribute('d', guide.basePath);
+    if (geometryChanged && basePath) {
+      basePath.setAttribute('d', guide.basePath);
+      // SVG marker-start/end apply to the path's first/last vertex, not each
+      // subpath. Suppress them when the original anatomical endpoint is hidden.
+      basePath.setAttribute('marker-start', guide.negativeArrowPath ? 'url(#imu-guide-arrow)' : 'none');
+      basePath.setAttribute('marker-end', guide.positiveArrowPath ? 'url(#imu-guide-arrow)' : 'none');
+    }
     ['negative', 'positive'].forEach((direction) => {
       const path = container.querySelector(`[data-imu-guide-path="${axis}-${direction}"]`);
       if (!path) return;

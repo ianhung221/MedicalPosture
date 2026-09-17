@@ -5,6 +5,7 @@ import {
   guideEmphasisState,
 } from './imu-spatial-guides.js';
 import { createHeadDeformer, NECK_PIVOT } from './imu-head-deformation.js';
+import { createOcclusionIndex } from './imu-occlusion-index.js';
 
 const THREE_MODULE_URL = new URL('../../assets/vendor/three-r185/three.module.min.js', import.meta.url).href;
 const GLTF_LOADER_URL = new URL('../../assets/vendor/three-r185/addons/loaders/GLTFLoader.js', import.meta.url).href;
@@ -54,6 +55,33 @@ function isQuaternion(value) {
   return value && [value.w, value.x, value.y, value.z].every(Number.isFinite);
 }
 
+// Test the actual deformed surface, not a screen-space head silhouette.
+// A guide in front of the face remains visible even when its projection overlaps.
+export function createHeadSurfaceVisibility(THREE, camera, meshes) {
+  const ray = new THREE.Raycaster();
+  const direction = new THREE.Vector3();
+  const endpoint = new THREE.Vector3();
+  const hits = [];
+  const indexed = meshes.map(mesh => ({ mesh, index: createOcclusionIndex(THREE, mesh) }));
+  const fallback = indexed.filter(entry => !entry.index).map(entry => entry.mesh);
+  const visible = (worldPoint) => {
+    direction.copy(worldPoint).sub(camera.position);
+    const distance = direction.length();
+    if (distance <= camera.near) return false;
+    ray.set(camera.position, direction.normalize());
+    ray.near = 0;
+    ray.far = Math.max(0, distance - 0.002); // model-unit depth tolerance
+    endpoint.copy(camera.position).add(direction.multiplyScalar(ray.far));
+    for (const entry of indexed) if (entry.index?.intersects(camera.position, endpoint)) return false;
+    if (!fallback.length) return true;
+    hits.length = 0;
+    ray.intersectObjects(fallback, false, hits);
+    return hits.length === 0;
+  };
+  visible.getDiagnostics = () => indexed.map(entry => entry.index?.getDiagnostics() || { fallback: true });
+  return visible;
+}
+
 export function createImuHeadRenderer({
   moduleLoader = loadThreeModules,
   modelUrl = MODEL_URL,
@@ -75,6 +103,8 @@ export function createImuHeadRenderer({
   let orientationRoot = null;
   let modelRoot = null;
   const deformers = [];
+  const occlusionMeshes = [];
+  let surfaceVisible = null;
   let host = null;
   let resizeObserver = null;
   let pendingFrame = null;
@@ -147,16 +177,18 @@ export function createImuHeadRenderer({
       NECK_PIVOT[1] + modelRoot.position.y,
       NECK_PIVOT[2] + modelRoot.position.z,
     );
-    const projectPoint = (coordinates) => {
+    const projectPoint = (coordinates, testVisibility = false) => {
       const projected = new THREE.Vector3(...coordinates)
         .sub(pivot)
         .applyQuaternion(latestQuaternion)
         .add(pivot);
       if (framingRoot) projected.add(framingRoot.position);
+      const visible = !testVisibility || surfaceVisible(projected);
       projected.project(camera);
       return Object.freeze({
         x: (projected.x + 1) * size.width / 2,
         y: (1 - projected.y) * size.height / 2,
+        visible: visible && projected.z >= -1 && projected.z <= 1,
       });
     };
     const modelOffset = [modelRoot.position.x, modelRoot.position.y, modelRoot.position.z];
@@ -173,7 +205,12 @@ export function createImuHeadRenderer({
       return first ? reportError(initializationError(IMU_3D_ERROR_CODES.FIRST_RENDER_FAILED, 'first-render-size', 'LIVE stage canvas size is zero')) : false;
     }
     try {
-      deformers.forEach((deform) => deform(latestQuaternion));
+      deformers.forEach((deform, index) => {
+        if (!deform(latestQuaternion)) return;
+        // Mesh.raycast must not reject the rotated head using stale rest bounds.
+        occlusionMeshes[index].geometry.computeBoundingSphere();
+        if (occlusionMeshes[index].geometry.boundingBox) occlusionMeshes[index].geometry.computeBoundingBox();
+      });
       renderer.render(scene, camera);
       renderCount += 1;
       emitGuideLayout(size);
@@ -300,6 +337,7 @@ export function createImuHeadRenderer({
             object.castShadow = false;
             object.receiveShadow = false;
             deformers.push(createHeadDeformer(object.geometry));
+            occlusionMeshes.push(object);
             object.frustumCulled = false;
           });
           loadingModelRoot.add(gltf.scene);
@@ -309,6 +347,7 @@ export function createImuHeadRenderer({
           headMetrics = deriveHeadVisualMetrics(modelBounds);
           framingRadius = headMetrics.framingRadius;
           framingTarget = { ...headMetrics.pivot };
+          surfaceVisible = createHeadSurfaceVisibility(THREE, camera, occlusionMeshes);
           // Fixed bust root; only the continuous neck/head deformation rotates.
           guideCreationCount += 1;
         } catch (error) {
@@ -426,6 +465,8 @@ export function createImuHeadRenderer({
     orientationRoot = null;
     modelRoot = null;
     deformers.length = 0;
+    occlusionMeshes.length = 0;
+    surfaceVisible = null;
     guideLayoutListener = null;
     latestGuideLayout = null;
     headMetrics = null;
