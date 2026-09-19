@@ -1,3 +1,12 @@
+import { reminderRisk } from '../posture/reminder-policy.js';
+
+const clonePosture = (value) => value ? { ...value, metadata: { ...value.metadata }, counts: { ...value.counts }, transition: value.transition ? { ...value.transition } : null, lastTransition: value.lastTransition ? { ...value.lastTransition } : null } : null;
+const posturePatch = (patch, source) => {
+  if (!Object.hasOwn(patch || {}, 'postureRuntime')) return {};
+  const value = patch.postureRuntime;
+  if (value && value.source !== source) throw new TypeError('Posture source must match active engine');
+  return { postureRuntime: clonePosture(value), riskLevel: value?.suspended ? 'normal' : reminderRisk(value?.level) };
+};
 const listeners = new Set();
 
 const initialAiRuntime = () => ({
@@ -79,6 +88,7 @@ const initialState = () => ({
   recommendation: null,
   pendingRecommendation: null,
   ignoredRecommendationKey: null,
+  postureRuntime: null,
   aiRuntime: null,
   imuRuntime: null,
   lastSummary: null,
@@ -93,6 +103,7 @@ function accumulatedActiveDuration(at = Date.now()) {
 function snapshot(at = Date.now()) {
   return {
     ...state,
+    postureRuntime: clonePosture(state.postureRuntime),
     activeDurationMs: accumulatedActiveDuration(at),
     contextDetails: state.contextDetails ? { ...state.contextDetails } : null,
     recommendation: state.recommendation ? { ...state.recommendation, requirements: [...(state.recommendation.requirements || [])] } : null,
@@ -177,6 +188,7 @@ export function startMonitoring({ mode, context = 'fixed-indoor', recommendation
     recommendation: recommendation ? { ...recommendation, requirements: [...(recommendation.requirements || [])] } : null,
     pendingRecommendation: null,
     ignoredRecommendationKey: null,
+    postureRuntime: null,
     aiRuntime: activeMethod === 'ai' ? initialAiRuntime() : null,
     imuRuntime: activeMethod === 'imu' ? initialImuRuntime() : null,
     lastSummary: null,
@@ -230,6 +242,7 @@ export function applyPendingMonitoringRecommendation(at = Date.now()) {
     recommendation: { ...recommendation, shouldAutoApply: false, requirements: [...(recommendation.requirements || [])] },
     pendingRecommendation: null,
     ignoredRecommendationKey: null,
+    postureRuntime: null,
     aiRuntime: decision === 'ai' ? initialAiRuntime() : null,
     imuRuntime: decision === 'imu' ? initialImuRuntime() : null,
   };
@@ -245,7 +258,7 @@ export function dismissPendingMonitoringRecommendation() {
 
 export function pauseMonitoring(at = Date.now()) {
   if (state.status !== 'monitoring') return snapshot();
-  state = { ...state, status: 'paused', activeDurationMs: accumulatedActiveDuration(at), activeSince: null, aiRuntime: state.aiRuntime ? { ...state.aiRuntime, status: 'paused' } : null, imuRuntime: state.imuRuntime ? { ...state.imuRuntime, status: 'paused' } : null };
+  state = { ...state, postureRuntime: state.postureRuntime ? { ...state.postureRuntime, suspended: true, transition: null } : null, status: 'paused', activeDurationMs: accumulatedActiveDuration(at), activeSince: null, aiRuntime: state.aiRuntime ? { ...state.aiRuntime, status: 'paused' } : null, imuRuntime: state.imuRuntime ? { ...state.imuRuntime, status: 'paused' } : null };
   return emit();
 }
 
@@ -258,10 +271,12 @@ export function resumeMonitoring(at = Date.now()) {
 export function updateAiRuntime(patch) {
   if (state.status === 'idle' || state.activeMethod !== 'ai' || !state.aiRuntime) return snapshot();
   const next = typeof patch === 'function' ? patch(snapshot().aiRuntime) : patch;
+  const { postureRuntime: _posture, ...runtimePatch } = next || {};
   state = {
     ...state,
+    ...posturePatch(next, 'ai'),
     aiRuntime: {
-      ...state.aiRuntime, ...next,
+      ...state.aiRuntime, ...runtimePatch,
       calibration: { ...state.aiRuntime.calibration, ...(next?.calibration || {}) },
       counts: { ...state.aiRuntime.counts, ...(next?.counts || {}) },
       performance: { ...state.aiRuntime.performance, ...(next?.performance || {}) },
@@ -278,6 +293,7 @@ export function updateImuRuntime(patch) {
   const sanitized = Object.fromEntries(Object.entries(next || {}).filter(([key]) => allowed.includes(key)));
   state = {
     ...state,
+    ...posturePatch(next, 'imu'),
     imuRuntime: {
       ...state.imuRuntime, ...sanitized,
       permission: { ...state.imuRuntime.permission, ...(sanitized.permission || {}) },
@@ -303,6 +319,7 @@ export function endMonitoring(at = Date.now()) {
   const durationMinutes = Math.max(1, Math.round(durationMs / 60000));
   const hasRealAi = completed.activeMethod === 'ai' && completed.aiRuntime?.runtimeKind === 'mediapipe-web';
   const hasRealImu = completed.activeMethod === 'imu' && completed.imuRuntime?.runtimeKind === 'browser-sensors';
+  const posture = completed.postureRuntime;
   const goodPercent = hasRealAi && completed.aiRuntime.observedDurationMs > 0 ? Math.min(100, Math.round(completed.aiRuntime.goodDurationMs / completed.aiRuntime.observedDurationMs * 100)) : 0;
   const lastSummary = {
     mode: completed.mode,
@@ -313,11 +330,13 @@ export function endMonitoring(at = Date.now()) {
     runtimeKind: completed.aiRuntime?.runtimeKind || completed.imuRuntime?.runtimeKind || 'mock',
     modelVariant: completed.aiRuntime?.modelVariant || null,
     goodPosture: hasRealAi ? `${goodPercent}%` : completed.activeMethod === 'ai' ? '尚無真實資料' : '—',
-    lookingDown: hasRealAi ? `${completed.aiRuntime.counts.LOW_HEAD} 次` : completed.activeMethod === 'ai' ? '尚無真實資料' : '—',
+    lookingDown: posture ? `${posture.counts.LOW_HEAD} 次` : hasRealAi ? `${completed.aiRuntime.counts.LOW_HEAD} 次` : completed.activeMethod === 'ai' ? '尚無真實資料' : '—',
     walkingDown: completed.activeMethod === 'imu' ? '尚未分類' : '0 次',
-    reminders: hasRealAi ? `${completed.aiRuntime.reminders} 次` : '—',
+    postureEpisodeCount: posture?.episodeCount ?? null,
+    reminderTransitionCount: posture?.transitionCount ?? null,
+    reminders: posture ? `${posture.outputCount} 次` : hasRealAi ? `${completed.aiRuntime.reminders} 次` : '—',
     insight: completed.activeMethod === 'imu'
-      ? hasRealImu ? '本次摘要確認手機本機感測器已建立相對姿態；Phase 3A 尚未進行低頭或行走風險分類。' : '本次尚未建立真實手機姿態資料；穿戴式 IMU 仍為未來整合方向。'
+      ? hasRealImu ? '本次以手機相對 Pitch 進行低頭概念驗證；提醒為工程原型參數，不作醫療診斷。尚未整合穿戴裝置或行走風險分類。' : '本次尚未建立真實手機姿態資料；穿戴式 IMU 仍為未來整合方向。'
       : completed.activeMethod === 'ai'
         ? hasRealAi ? '本次摘要由 MediaPipe Web 本機辨識產生，僅供姿勢健康提醒，不作醫療診斷。' : '本次尚未建立真實 AI 偵測資料。'
         : '本次情境維持不監測，符合以學習優先且不過度干擾的設計原則。',

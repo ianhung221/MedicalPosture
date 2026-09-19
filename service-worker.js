@@ -1,4 +1,4 @@
-const CACHE_NAME = 'posture-health-shell-v27';
+const CACHE_NAME = 'posture-health-shell-v28';
 const CACHE_PREFIX = 'posture-health-shell-';
 const AI_CACHE_NAME = 'posture-ai-assets-v1';
 const AI_CACHE_PREFIX = 'posture-ai-assets-';
@@ -11,6 +11,7 @@ const APP_SHELL = [
   './src/config/features.js', './src/config/firebase.config.example.js',
   './src/services/firebase.service.js', './src/services/imu.service.js', './src/services/pose.service.js', './src/utils/dom.js',
   './src/state/monitoring-session.js', './src/state/platform-settings.js',
+  './src/posture/posture-episode-tracker.js', './src/posture/reminder-policy.js', './src/posture/reminder-presentation.js', './src/imu/imu-posture-classifier.js',
   './src/context/capability-detector.js', './src/context/motion-sampler.js', './src/context/activity-detector.js', './src/context/smart-mode-rules.js', './src/context/context-engine.js',
   './src/sensors/sensor-permission.js',
   './src/imu/imu-head-anatomy.js',

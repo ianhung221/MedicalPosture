@@ -1,3 +1,5 @@
+import { createReminderPolicy } from '../posture/reminder-policy.js';
+import { createImuPostureClassifier } from './imu-posture-classifier.js';
 import { IMU_CONFIG } from './imu-config.js';
 import { requestSensorPermissions } from '../sensors/sensor-permission.js';
 import { createImuSensorSource } from './imu-sensor-source.js';
@@ -8,9 +10,9 @@ import { IDENTITY_CSS_MATRIX3D, quaternionToCssMatrix3d } from './imu-visual-map
 import { IMU_DIAGNOSTICS_DEBUG } from './imu-debug-config.js';
 import { updateImuRuntime } from '../state/monitoring-session.js';
 
-const initialSnapshot = () => ({ status: 'idle', runtimeKind: 'pending', permission: { motion: 'unknown', orientation: 'unknown' }, calibration: { active: false, completed: false, elapsedMs: 0, validSamples: 0, stable: false, baseline: null }, orientation: { pitch: 0, roll: 0, yaw: 0, yawAvailable: false, singular: false, visualMatrix: IDENTITY_CSS_MATRIX3D, visualQuaternion: { w: 1, x: 0, y: 0, z: 0 } }, sampleCadenceHz: 0, motionSampleCount: 0, orientationSampleCount: 0, error: null });
+const initialSnapshot = () => ({ postureRuntime: null, status: 'idle', runtimeKind: 'pending', permission: { motion: 'unknown', orientation: 'unknown' }, calibration: { active: false, completed: false, elapsedMs: 0, validSamples: 0, stable: false, baseline: null }, orientation: { pitch: 0, roll: 0, yaw: 0, yawAvailable: false, singular: false, visualMatrix: IDENTITY_CSS_MATRIX3D, visualQuaternion: { w: 1, x: 0, y: 0, z: 0 } }, sampleCadenceHz: 0, motionSampleCount: 0, orientationSampleCount: 0, error: null });
 
-export function createImuMonitoringEngine({ permissionRequester = requestSensorPermissions, sourceFactory = createImuSensorSource, normalizer = normalizeOrientationSample, smoother = createOrientationSmoother({ alpha: IMU_CONFIG.smoothingAlpha }), calibration = createImuCalibration(), sessionUpdater = updateImuRuntime, now = () => globalThis.performance?.now?.() ?? Date.now(), documentRef = globalThis.document } = {}) {
+export function createImuMonitoringEngine({ policy = createReminderPolicy(), postureClassifier = createImuPostureClassifier(), permissionRequester = requestSensorPermissions, sourceFactory = createImuSensorSource, normalizer = normalizeOrientationSample, smoother = createOrientationSmoother({ alpha: IMU_CONFIG.smoothingAlpha }), calibration = createImuCalibration(), sessionUpdater = updateImuRuntime, now = () => globalThis.performance?.now?.() ?? Date.now(), documentRef = globalThis.document } = {}) {
   let snapshot = initialSnapshot(); let source = null; let running = false; let lastOrientationAt = null; let lastSessionUpdateAt = -Infinity; let onPrivacyPause = null; let debugRaw = null; let debugNormalized = null;
   const listeners = new Set();
   const clone = () => JSON.parse(JSON.stringify(snapshot));
@@ -18,11 +20,11 @@ export function createImuMonitoringEngine({ permissionRequester = requestSensorP
     const previousStatus = snapshot.status; snapshot = { ...snapshot, ...patch }; const value = clone();
     listeners.forEach((listener) => listener(value));
     const currentAt = now();
-    if (previousStatus !== snapshot.status || currentAt - lastSessionUpdateAt >= IMU_CONFIG.telemetryIntervalMs) {
+    if (snapshot.postureRuntime?.transition || previousStatus !== snapshot.status || currentAt - lastSessionUpdateAt >= IMU_CONFIG.telemetryIntervalMs) {
       lastSessionUpdateAt = currentAt;
-      const { status, runtimeKind, permission, calibration: calibrationState, orientation, sampleCadenceHz, motionSampleCount, orientationSampleCount, error, pauseReason } = value;
+      const { status, runtimeKind, permission, calibration: calibrationState, orientation, sampleCadenceHz, motionSampleCount, orientationSampleCount, error, pauseReason, postureRuntime } = value;
       const { visualQuaternion: _viewOnlyQuaternion, ...sessionOrientation } = orientation || {};
-      sessionUpdater({ status, runtimeKind, permission, calibration: calibrationState, orientation: sessionOrientation, sampleCadenceHz, motionSampleCount, orientationSampleCount, error, pauseReason });
+      sessionUpdater({ status, runtimeKind, permission, calibration: calibrationState, orientation: sessionOrientation, sampleCadenceHz, motionSampleCount, orientationSampleCount, error, pauseReason, postureRuntime });
     }
     return value;
   };
@@ -40,16 +42,18 @@ export function createImuMonitoringEngine({ permissionRequester = requestSensorP
     const relative = calibration.relative(normalized); const smoothed = smoother.push(relative);
     const telemetry = quaternionToRelativeTelemetry(smoothed);
     if (!smoothed || !telemetry) return;
-    emit({ status: 'monitoring', runtimeKind: 'browser-sensors', calibration: calibration.getSnapshot(currentAt), orientation: { ...telemetry, visualMatrix: quaternionToCssMatrix3d(smoothed), visualQuaternion: { ...smoothed } }, orientationSampleCount: source?.getCounts().orientationCount || 0, motionSampleCount: source?.getCounts().motionCount || 0, sampleCadenceHz: cadence, error: null });
+    const postureRuntime = policy.update(postureClassifier.update(telemetry, currentAt));
+    emit({ postureRuntime, status: 'monitoring', runtimeKind: 'browser-sensors', calibration: calibration.getSnapshot(currentAt), orientation: { ...telemetry, visualMatrix: quaternionToCssMatrix3d(smoothed), visualQuaternion: { ...smoothed } }, orientationSampleCount: source?.getCounts().orientationCount || 0, motionSampleCount: source?.getCounts().motionCount || 0, sampleCadenceHz: cadence, error: null });
   };
   const onMotion = () => { if (running) snapshot.motionSampleCount = source?.getCounts().motionCount || snapshot.motionSampleCount; };
-  const onScreenAngle = () => { if (!running) return; calibration.reset(); smoother.reset(); emit({ status: 'recalibration-required', calibration: calibration.getSnapshot(), error: null }); };
-  const onSourceStatus = ({ status }) => { if (status === 'timeout') emit({ status: 'error', error: '尚未收到有效的裝置姿態資料，請確認瀏覽器與感測器支援。' }); };
+  const onScreenAngle = () => { if (!running) return; calibration.reset(); smoother.reset(); policy.reset(); postureClassifier.reset(); emit({ postureRuntime: null, status: 'recalibration-required', calibration: calibration.getSnapshot(), error: null }); };
+  const onSourceStatus = ({ status }) => { if (status === 'timeout') { policy.pause(); emit({ status: 'error', postureRuntime: policy.getSnapshot(), error: '尚未收到有效的裝置姿態資料，請確認瀏覽器與感測器支援。' }); } };
   const handleVisibility = () => { if (documentRef?.hidden && running) { api.pause({ reason: 'hidden' }); onPrivacyPause?.('hidden'); } };
   const api = {
     configure({ privacyPause } = {}) { onPrivacyPause = privacyPause || null; },
     async start({ environment = {} } = {}) {
       if (running) return true;
+      policy.reset(); postureClassifier.reset();
       emit({ ...initialSnapshot(), status: 'requesting-permission' });
       const permissions = await permissionRequester({ motion: true, orientation: true, environment });
       const permission = { motion: permissions.motion?.permission || 'unknown', orientation: permissions.orientation?.permission || 'unknown' };
@@ -61,9 +65,9 @@ export function createImuMonitoringEngine({ permissionRequester = requestSensorP
       documentRef?.addEventListener?.('visibilitychange', handleVisibility);
       emit({ status: 'waiting-samples', permission, error: null }); return true;
     },
-    pause({ reason = 'user' } = {}) { if (!running) return false; source?.stop(); running = false; calibration.reset(); smoother.reset(); documentRef?.removeEventListener?.('visibilitychange', handleVisibility); emit({ status: 'paused', pauseReason: reason }); return true; },
+    pause({ reason = 'user' } = {}) { if (!running) return false; source?.stop(); running = false; calibration.reset(); smoother.reset(); documentRef?.removeEventListener?.('visibilitychange', handleVisibility); policy.pause(); emit({ status: 'paused', pauseReason: reason, postureRuntime: policy.getSnapshot() }); return true; },
     async resume(options = {}) { if (running) return true; snapshot = { ...snapshot, status: 'waiting-samples', error: null }; return api.start(options); },
-    stop() { source?.stop(); source = null; running = false; calibration.reset(); smoother.reset(); lastOrientationAt = null; lastSessionUpdateAt = -Infinity; debugRaw = null; debugNormalized = null; documentRef?.removeEventListener?.('visibilitychange', handleVisibility); snapshot = initialSnapshot(); listeners.forEach((listener) => listener(clone())); },
+    stop() { policy.reset(); postureClassifier.reset(); source?.stop(); source = null; running = false; calibration.reset(); smoother.reset(); lastOrientationAt = null; lastSessionUpdateAt = -Infinity; debugRaw = null; debugNormalized = null; documentRef?.removeEventListener?.('visibilitychange', handleVisibility); snapshot = initialSnapshot(); listeners.forEach((listener) => listener(clone())); },
     detachView() { return running; },
     attachView(listener) { if (typeof listener !== 'function') return () => {}; listeners.add(listener); listener(clone()); return () => listeners.delete(listener); },
     subscribe(listener) { listeners.add(listener); listener(clone()); return () => listeners.delete(listener); },

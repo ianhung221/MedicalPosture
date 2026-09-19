@@ -6,23 +6,23 @@ import { clearPoseOverlay, drawPoseOverlay } from './pose-overlay.js';
 import { createPerformanceMeter } from './performance-meter.js';
 import { AI_BACKGROUND_DIAGNOSTICS_DEBUG } from './ai-debug-config.js';
 import { createBackgroundAiDiagnostics } from './background-ai-diagnostics.js';
-import { getMonitoringSession, setMonitoringRisk, updateAiRuntime } from '../state/monitoring-session.js';
+import { getMonitoringSession, updateAiRuntime } from '../state/monitoring-session.js';
 import { getPlatformSettings } from '../state/platform-settings.js';
 
-const BAD_STATES = new Set([POSTURE_STATES.LOW_HEAD, POSTURE_STATES.HAND_ON_FACE, POSTURE_STATES.SLUMPING]);
+import { createReminderPolicy, postureObservation } from '../posture/reminder-policy.js';
 
 export function createAiMonitoringEngine({
-  camera = createCameraController(), runtime = createPoseRuntime(), pipeline = createPosePipeline(), meter = createPerformanceMeter(),
+  policy = createReminderPolicy(), camera = createCameraController(), runtime = createPoseRuntime(), pipeline = createPosePipeline(), meter = createPerformanceMeter(),
   requestFrame = globalThis.requestAnimationFrame?.bind(globalThis), cancelFrame = globalThis.cancelAnimationFrame?.bind(globalThis),
   setIntervalFn = globalThis.setInterval?.bind(globalThis), clearIntervalFn = globalThis.clearInterval?.bind(globalThis),
   now = () => globalThis.performance?.now?.() ?? Date.now(), documentRef = globalThis.document,
   videoFactory = () => documentRef?.createElement?.('video'),
-  sessionUpdater = updateAiRuntime, riskUpdater = setMonitoringRisk, sessionGetter = getMonitoringSession,
+  sessionUpdater = updateAiRuntime, sessionGetter = getMonitoringSession,
   settingsGetter = getPlatformSettings, diagnostics = createBackgroundAiDiagnostics({ enabled: AI_BACKGROUND_DIAGNOSTICS_DEBUG }),
 } = {}) {
   let frameId = null; let timerId = null; let running = false; let inFlight = false;
   let inferenceVideo = null; let displayVideo = null; let canvas = null;
-  let lastVideoTime = -1; let lastInferenceAt = 0; let lastSessionUpdateAt = 0; let lastRisk = 'normal';
+  let lastVideoTime = -1; let lastInferenceAt = 0; let lastSessionUpdateAt = 0;
   let modelVariant = DEFAULT_MODEL_VARIANT; let onPrivacyPause = null; let lastFrameDataUrl = null;
   let engineState = 'idle'; let latestResult = null; let latestLandmarks = null; let overlayVersion = 0; let renderedOverlayVersion = -1;
   let schedulerCallbackCount = 0; let renderCallbackCount = 0; let skippedFrames = 0; let droppedInFlightFrames = 0;
@@ -30,19 +30,18 @@ export function createAiMonitoringEngine({
   const inferenceIntervalMs = 100;
 
   const updateSession = (result, timestamp, force = false) => {
-    if (!force && timestamp - lastSessionUpdateAt < 250) return;
+    if (!force && !result?.posture?.transition && timestamp - lastSessionUpdateAt < 250) return;
     lastSessionUpdateAt = timestamp;
-    const tracker = result?.tracker || pipeline.getSnapshot().tracker;
+    const tracker = result?.tracker || policy.getTrackerSnapshot();
     sessionUpdater({
       status: result?.calibration?.active ? 'calibrating' : 'monitoring', runtimeKind: 'mediapipe-web', modelVariant,
       postureState: result?.stableState || POSTURE_STATES.UNKNOWN, postureDurationMs: tracker?.stateDurationMs || 0,
       calibration: result?.calibration || pipeline.getSnapshot().calibration,
       counts: tracker?.counts || {}, goodDurationMs: tracker?.goodDurationMs || 0, observedDurationMs: tracker?.observedDurationMs || 0, reminders: tracker?.reminders || 0,
       performance: meter.snapshot(timestamp), error: null,
+      postureRuntime: result?.posture || policy.getSnapshot(),
     });
     telemetryUpdateCount += 1;
-    const nextRisk = BAD_STATES.has(result?.stableState) && (tracker?.stateDurationMs || 0) > 3000 ? 'attention' : 'normal';
-    if (nextRisk !== lastRisk) { lastRisk = nextRisk; riskUpdater(nextRisk); }
   };
 
   const clearScheduling = () => {
@@ -64,11 +63,15 @@ export function createAiMonitoringEngine({
       const landmarks = detection?.landmarks?.[0] || null;
       latestLandmarks = landmarks; overlayVersion += 1;
       if (renderImmediately && displayVideo) { drawPoseOverlay(canvas, displayVideo, landmarks, runtime.getConnections()); renderedOverlayVersion = overlayVersion; }
-      const result = pipeline.process(landmarks, timestamp); pipelineProcessCount += 1; latestResult = result; engineState = result?.calibration?.active ? 'calibrating' : 'monitoring'; updateSession(result, timestamp);
+      const result = pipeline.process(landmarks, timestamp);
+      result.posture = policy.update(postureObservation('ai', result.stableState, timestamp));
+      result.tracker = policy.getTrackerSnapshot();
+      pipelineProcessCount += 1; latestResult = result; engineState = result?.calibration?.active ? 'calibrating' : 'monitoring'; updateSession(result, timestamp);
     } catch (error) {
       running = false; clearScheduling();
       engineState = 'error'; diagnostics.capture('error'); diagnostics.stop();
-      sessionUpdater({ status: 'error', error: `姿勢推論中斷：${error.message || '未知錯誤'}` });
+      policy.pause();
+      sessionUpdater({ status: 'error', error: `姿勢推論中斷：${error.message || '未知錯誤'}`, postureRuntime: policy.getSnapshot() });
       camera.stop(inferenceVideo); camera.detach?.(displayVideo); runtime.close(); clearPoseOverlay(canvas); documentRef?.removeEventListener?.('visibilitychange', handleVisibility);
     } finally { inFlight = false; }
   };
@@ -94,7 +97,7 @@ export function createAiMonitoringEngine({
     const tracks = stream?.getVideoTracks?.() || stream?.getTracks?.() || [];
     const track = tracks[0] || null;
     const performance = meter.snapshot(now());
-    const tracker = latestResult?.tracker || pipeline.getSnapshot().tracker || {};
+    const tracker = latestResult?.tracker || policy.getTrackerSnapshot();
     const session = sessionGetter?.() || {};
     return {
       visibilityState: documentRef?.visibilityState || (documentRef?.hidden ? 'hidden' : 'visible'),
@@ -143,11 +146,11 @@ export function createAiMonitoringEngine({
       inferenceVideo = videoFactory?.();
       if (!inferenceVideo) throw new Error('無法建立 AI 推論影像來源');
       inferenceVideo.setAttribute?.('playsinline', ''); inferenceVideo.muted = true;
-      displayVideo = nextVideo; canvas = nextCanvas; modelVariant = requestedModel; lastVideoTime = -1; lastInferenceAt = 0; lastSessionUpdateAt = 0; lastRisk = 'normal';
+      displayVideo = nextVideo; canvas = nextCanvas; modelVariant = requestedModel; lastVideoTime = -1; lastInferenceAt = 0; lastSessionUpdateAt = 0;
       latestResult = null; latestLandmarks = null; overlayVersion = 0; renderedOverlayVersion = -1;
       schedulerCallbackCount = 0; renderCallbackCount = 0; skippedFrames = 0; droppedInFlightFrames = 0; pipelineProcessCount = 0; telemetryUpdateCount = 0; engineState = 'loading'; diagnostics.stop(); diagnostics.reset();
-      pipeline.reset(); pipeline.startCalibration(); meter.reset();
-      sessionUpdater({ status: 'loading', runtimeKind: 'pending', modelVariant, error: null });
+      pipeline.reset(); policy.reset(); pipeline.startCalibration(); meter.reset();
+      sessionUpdater({ status: 'loading', runtimeKind: 'pending', modelVariant, error: null, postureRuntime: null });
       let cameraStarted = false;
       try {
         await camera.start(inferenceVideo);
@@ -170,14 +173,14 @@ export function createAiMonitoringEngine({
       if (canvas?.toDataURL) { try { lastFrameDataUrl = canvas.toDataURL('image/jpeg', 0.8); } catch { lastFrameDataUrl = null; } }
       running = false; clearScheduling(); inFlight = false;
       engineState = 'paused'; diagnostics.capture(`pause-${reason}`); diagnostics.stop();
-      pipeline.pause(); camera.stop(inferenceVideo); camera.detach?.(displayVideo); documentRef?.removeEventListener?.('visibilitychange', handleVisibility);
-      sessionUpdater({ status: 'paused', pauseReason: reason });
+      policy.pause(); camera.stop(inferenceVideo); camera.detach?.(displayVideo); documentRef?.removeEventListener?.('visibilitychange', handleVisibility);
+      sessionUpdater({ status: 'paused', pauseReason: reason, postureRuntime: policy.getSnapshot() });
     },
     stop() {
       running = false; clearScheduling(); inFlight = false;
       engineState = 'stopped'; diagnostics.capture('stop'); diagnostics.stop();
-      camera.stop(inferenceVideo); camera.detach?.(displayVideo); runtime.close(); pipeline.reset(); meter.reset(); clearPoseOverlay(canvas);
-      documentRef?.removeEventListener?.('visibilitychange', handleVisibility); inferenceVideo = null; displayVideo = null; canvas = null; latestLandmarks = null; lastFrameDataUrl = null; lastRisk = 'normal';
+      camera.stop(inferenceVideo); camera.detach?.(displayVideo); runtime.close(); pipeline.reset(); policy.reset(); meter.reset(); clearPoseOverlay(canvas);
+      documentRef?.removeEventListener?.('visibilitychange', handleVisibility); inferenceVideo = null; displayVideo = null; canvas = null; latestLandmarks = null; lastFrameDataUrl = null;
     },
     detachView() {
       if (frameId !== null) cancelFrame(frameId);
