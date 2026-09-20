@@ -203,7 +203,7 @@ function strategyCards(session) {
   const view = reminderPresentation(session);
   const riskLevel = view.activeStrategy;
   const strategies = [
-    ['normal', '一般低頭', '低頭持續確認後，溫和提醒調整姿勢。', 'south'],
+    ['awareness', '一般低頭', '低頭持續確認後，溫和提醒調整姿勢。', 'south'],
     ['attention', '持續坐姿異常', '長時間低頭或已確認的明顯異常，提醒調整姿勢。', 'notification_important'],
     ['high-risk', '行走＋持續低頭', '規劃功能：結合行走與持續低頭後提高安全提醒優先度。', 'warning'],
   ];

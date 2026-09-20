@@ -1,11 +1,11 @@
-import { reminderRisk } from '../posture/reminder-policy.js';
+import { reminderPresentationLevel } from '../posture/reminder-presentation.js';
 
 const clonePosture = (value) => value ? { ...value, metadata: { ...value.metadata }, counts: { ...value.counts }, transition: value.transition ? { ...value.transition } : null, lastTransition: value.lastTransition ? { ...value.lastTransition } : null } : null;
 const posturePatch = (patch, source) => {
   if (!Object.hasOwn(patch || {}, 'postureRuntime')) return {};
   const value = patch.postureRuntime;
   if (value && value.source !== source) throw new TypeError('Posture source must match active engine');
-  return { postureRuntime: clonePosture(value), riskLevel: value?.suspended ? 'normal' : reminderRisk(value?.level) };
+  return { postureRuntime: clonePosture(value), riskLevel: value?.suspended ? 'normal' : reminderPresentationLevel(value?.level) };
 };
 const listeners = new Set();
 
@@ -306,7 +306,7 @@ export function updateImuRuntime(patch) {
 }
 
 export function setMonitoringRisk(riskLevel) {
-  assertOneOf(riskLevel, ['normal', 'attention', 'high-risk'], 'riskLevel');
+  assertOneOf(riskLevel, ['normal', 'awareness', 'attention', 'high-risk'], 'riskLevel');
   if (state.status === 'idle') return snapshot();
   state = { ...state, riskLevel };
   return emit();

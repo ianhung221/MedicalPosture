@@ -16,6 +16,7 @@
 .app-shell[data-monitoring-status="monitoring"]::after,
 .app-shell[data-monitoring-status="paused"]::after { opacity: 1; }
 .app-shell[data-risk-level="normal"] { --monitoring-ring: rgb(32 151 99 / 48%); --monitoring-glow: rgb(32 151 99 / 10%); }
+.app-shell[data-risk-level="awareness"] { --monitoring-ring: rgb(201 154 22 / 58%); --monitoring-glow: rgb(201 154 22 / 13%); }
 .app-shell[data-risk-level="attention"] { --monitoring-ring: rgb(233 135 47 / 55%); --monitoring-glow: rgb(233 135 47 / 12%); }
 .app-shell[data-risk-level="high-risk"] { --monitoring-ring: rgb(217 75 84 / 62%); --monitoring-glow: rgb(217 75 84 / 14%); }
 .app-shell[data-monitoring-status="paused"] { --monitoring-ring: rgb(124 135 152 / 55%); --monitoring-glow: rgb(124 135 152 / 10%); }

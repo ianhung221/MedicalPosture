@@ -211,6 +211,7 @@ select:focus-visible {
   backdrop-filter: blur(16px);
   transition: border-color .2s ease, box-shadow .2s ease, opacity .2s ease;
 }
+.monitoring-chrome[data-risk-level="awareness"] .monitoring-dock { border-color: var(--yellow-border); }
 .monitoring-chrome[data-risk-level="attention"] .monitoring-dock { border-color: var(--orange-border); }
 .monitoring-chrome[data-risk-level="high-risk"] .monitoring-dock { border-color: var(--red-border); }
 .monitoring-chrome[data-status="paused"] .monitoring-dock { border-color: var(--border-strong); opacity: .9; }
@@ -225,6 +226,7 @@ select:focus-visible {
 .monitoring-dock__summary strong { font-size: .72rem; }
 .monitoring-dock__summary small { color: var(--muted); font-size: .58rem; }
 .monitoring-dock__pulse { width: 9px; height: 9px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 4px var(--green-soft); }
+.monitoring-chrome[data-risk-level="awareness"] .monitoring-dock__pulse { background: var(--yellow); box-shadow: 0 0 0 4px var(--yellow-soft); }
 .monitoring-chrome[data-risk-level="attention"] .monitoring-dock__pulse { background: var(--orange); box-shadow: 0 0 0 4px var(--orange-soft); }
 .monitoring-chrome[data-risk-level="high-risk"] .monitoring-dock__pulse { background: var(--red); box-shadow: 0 0 0 4px var(--red-soft); }
 .monitoring-chrome[data-status="paused"] .monitoring-dock__pulse { background: var(--paused); box-shadow: 0 0 0 4px var(--paused-soft); }

@@ -20,7 +20,7 @@ import { imuMonitoringEngine } from '../imu/imu-monitoring-engine.js';
 
 const modeLabels = { smart: '智慧模式', ai: 'AI 坐姿辨識', imu: 'IMU 姿態感測' };
 const methodLabels = { ai: 'AI', imu: 'IMU', none: '不監測' };
-const riskLabels = { normal: '目前正常', attention: '需要注意', 'high-risk': '高風險' };
+const riskLabels = { normal: '目前正常', awareness: '一般低頭', attention: '需要注意', 'high-risk': '高風險' };
 
 export function monitoringControlsMarkup() {
   return `

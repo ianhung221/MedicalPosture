@@ -9,9 +9,6 @@ export function postureObservation(source, state, timestamp, metadata = {}) {
   if (!['ai', 'imu'].includes(source) || !STATES.has(state) || !Number.isFinite(timestamp)) throw new TypeError('Invalid posture observation');
   return { source, state, timestamp, metadata: { ...metadata } };
 }
-export function reminderRisk(level) {
-  return level === REMINDER_LEVELS.HIGH_RISK ? 'high-risk' : level === REMINDER_LEVELS.PERSISTENT ? 'attention' : 'normal';
-}
 export function createReminderPolicy(options = {}) {
   const config = { ...REMINDER_CONFIG, ...options };
   const tracker = createPostureEventTracker(config);

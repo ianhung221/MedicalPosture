@@ -60,7 +60,7 @@ export function renderRecordsPage(container) {
       duration: '即時',
       reminded: '否',
       category: currentSession.activeMethod === 'none' ? 'neutral' : currentSession.activeMethod === 'ai' ? 'ai' : currentSession.riskLevel === 'high-risk' ? 'safety' : 'imu',
-      tone: currentSession.riskLevel === 'high-risk' ? 'danger' : currentSession.riskLevel === 'attention' ? 'warning' : 'healthy',
+      tone: currentSession.riskLevel === 'high-risk' ? 'danger' : currentSession.riskLevel === 'attention' ? 'warning' : currentSession.riskLevel === 'awareness' ? 'awareness' : 'healthy',
     }] : [];
     const recordsWithLiveSession = [...liveRecord, ...records];
     const visibleRecords = recordsWithLiveSession.filter((record) => {

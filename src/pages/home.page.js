@@ -112,7 +112,7 @@ export function renderHomePage(container) {
     const title = row.querySelector('[data-home-monitoring-title]');
     const copy = row.querySelector('[data-home-monitoring-copy]');
     const icon = row.querySelector('.status-row__icon');
-    row.classList.remove('status-row--healthy', 'status-row--warning', 'status-row--danger');
+    row.classList.remove('status-row--healthy', 'status-row--awareness', 'status-row--warning', 'status-row--danger');
 
     if (session.status === 'idle') {
       title.textContent = '目前未監測';
@@ -130,6 +130,7 @@ export function renderHomePage(container) {
     if (session.status === 'paused') row.classList.add('status-row--warning');
     else if (session.riskLevel === 'high-risk') row.classList.add('status-row--danger');
     else if (session.riskLevel === 'attention') row.classList.add('status-row--warning');
+    else if (session.riskLevel === 'awareness') row.classList.add('status-row--awareness');
     else row.classList.add('status-row--healthy');
   });
 }
