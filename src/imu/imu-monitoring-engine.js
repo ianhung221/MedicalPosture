@@ -31,10 +31,12 @@ export function createImuMonitoringEngine({ policy = createReminderPolicy(), pos
   const onOrientation = (raw, screenAngle) => {
     const normalized = normalizer(raw, screenAngle); if (!normalized) return;
     if (IMU_DIAGNOSTICS_DEBUG) { debugRaw = { ...raw }; debugNormalized = { ...normalized, quaternion: undefined }; }
-    const currentAt = normalized.timestamp; const cadence = lastOrientationAt === null || currentAt <= lastOrientationAt ? snapshot.sampleCadenceHz : 1000 / (currentAt - lastOrientationAt); lastOrientationAt = currentAt;
-    if (snapshot.status === 'waiting-samples' || snapshot.status === 'recalibration-required') { calibration.start(currentAt); smoother.reset(); }
+    const sensorAt = normalized.timestamp;
+    const observationAt = now();
+    const cadence = lastOrientationAt === null || sensorAt <= lastOrientationAt ? snapshot.sampleCadenceHz : 1000 / (sensorAt - lastOrientationAt); lastOrientationAt = sensorAt;
+    if (snapshot.status === 'waiting-samples' || snapshot.status === 'recalibration-required') { calibration.start(sensorAt); smoother.reset(); }
     if (snapshot.status === 'waiting-samples' || snapshot.status === 'recalibration-required' || snapshot.status === 'calibrating') {
-      const calibrationState = calibration.add(normalized, currentAt);
+      const calibrationState = calibration.add(normalized, sensorAt);
       if (calibrationState.status === 'error') { emit({ status: 'error', calibration: calibrationState, error: '校正期間裝置持續晃動，請重新校正。' }); return; }
       if (!calibrationState.completed) { emit({ status: 'calibrating', runtimeKind: 'browser-sensors', calibration: calibrationState, orientationSampleCount: source?.getCounts().orientationCount || 0, motionSampleCount: source?.getCounts().motionCount || 0, sampleCadenceHz: cadence }); return; }
       smoother.reset();
@@ -42,8 +44,8 @@ export function createImuMonitoringEngine({ policy = createReminderPolicy(), pos
     const relative = calibration.relative(normalized); const smoothed = smoother.push(relative);
     const telemetry = quaternionToRelativeTelemetry(smoothed);
     if (!smoothed || !telemetry) return;
-    const postureRuntime = policy.update(postureClassifier.update(telemetry, currentAt));
-    emit({ postureRuntime, status: 'monitoring', runtimeKind: 'browser-sensors', calibration: calibration.getSnapshot(currentAt), orientation: { ...telemetry, visualMatrix: quaternionToCssMatrix3d(smoothed), visualQuaternion: { ...smoothed } }, orientationSampleCount: source?.getCounts().orientationCount || 0, motionSampleCount: source?.getCounts().motionCount || 0, sampleCadenceHz: cadence, error: null });
+    const postureRuntime = policy.update(postureClassifier.update(telemetry, observationAt));
+    emit({ postureRuntime, status: 'monitoring', runtimeKind: 'browser-sensors', calibration: calibration.getSnapshot(sensorAt), orientation: { ...telemetry, visualMatrix: quaternionToCssMatrix3d(smoothed), visualQuaternion: { ...smoothed } }, orientationSampleCount: source?.getCounts().orientationCount || 0, motionSampleCount: source?.getCounts().motionCount || 0, sampleCadenceHz: cadence, error: null });
   };
   const onMotion = () => { if (running) snapshot.motionSampleCount = source?.getCounts().motionCount || snapshot.motionSampleCount; };
   const onScreenAngle = () => { if (!running) return; calibration.reset(); smoother.reset(); policy.reset(); postureClassifier.reset(); emit({ postureRuntime: null, status: 'recalibration-required', calibration: calibration.getSnapshot(), error: null }); };
