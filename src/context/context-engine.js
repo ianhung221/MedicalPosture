@@ -1,6 +1,6 @@
 import { probeCapabilities, requestCameraCapability } from './capability-detector.js';
 import { createMotionSampler } from './motion-sampler.js';
-import { createActivityDetector } from './activity-detector.js';
+import { createActivityDetector, DEFAULT_ACTIVITY_CONFIG } from './activity-detector.js';
 import { evaluateSmartMode } from './smart-mode-rules.js';
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
@@ -32,8 +32,23 @@ export function createContextEngine({ environment = {}, now = Date.now, capabili
   let visibilityBound = false;
   let evaluationPhase = 'initial-start';
   let lastActivityKey = null;
+  let lastMotionArrivalAt = null;
+  let lastMotionTimestamp = null;
 
-  const getSnapshot = () => clone(snapshot);
+  const getSnapshot = () => {
+    const current = clone(snapshot);
+    const evidence = current.activity.walkingEvidence;
+    if (evidence) {
+      evidence.sampleAgeMs = lastMotionArrivalAt === null ? null : Math.max(0, now() - lastMotionArrivalAt);
+      evidence.fresh = evidence.sampleAgeMs !== null && evidence.sampleAgeMs <= DEFAULT_ACTIVITY_CONFIG.maxSampleGapMs && current.visibility !== 'hidden';
+      if (!evidence.fresh) {
+        evidence.walkingConfirmed = false;
+        evidence.confidence = 'low';
+        evidence.reasons.push('stale-observation');
+      }
+    }
+    return current;
+  };
   const emit = () => {
     const current = getSnapshot();
     listeners.forEach((listener) => listener(current));
@@ -57,8 +72,13 @@ export function createContextEngine({ environment = {}, now = Date.now, capabili
   };
   const onMotionSample = (sample) => {
     const activity = activityDetector.push(sample);
+    if (Number.isFinite(sample.timestamp) && (lastMotionTimestamp === null || sample.timestamp > lastMotionTimestamp)) {
+      lastMotionArrivalAt = now();
+      lastMotionTimestamp = sample.timestamp;
+    }
     const activityKey = `${activity.state}|${activity.confidence}|${Boolean(activity.stale)}`;
-    if (activityKey === lastActivityKey) return;
+    // Evidence stays readable at the latest evaluation, without a per-sample UI emit.
+    if (activityKey === lastActivityKey) { snapshot.activity = activity; return; }
     lastActivityKey = activityKey;
     update({ activity, motion: { ...snapshot.motion, status: 'available', permission: 'granted', receivingData: true, sampleAgeMs: 0 }, status: 'ready' });
   };
@@ -71,11 +91,15 @@ export function createContextEngine({ environment = {}, now = Date.now, capabili
     if (visibility === 'hidden') {
       motionSampler?.setVisibility('hidden');
       lastActivityKey = null;
+      lastMotionArrivalAt = null;
+      lastMotionTimestamp = null;
       update({ visibility, activity: activityDetector.reset({ markStale: true }) });
       return;
     }
     activityDetector = activityDetectorFactory();
     lastActivityKey = null;
+    lastMotionArrivalAt = null;
+    lastMotionTimestamp = null;
     motionSampler?.setVisibility('visible');
     update({ visibility, activity: defaultActivity() });
   };
@@ -131,6 +155,8 @@ export function createContextEngine({ environment = {}, now = Date.now, capabili
     motionSampler = null;
     activityDetector = activityDetectorFactory();
     lastActivityKey = null;
+    lastMotionArrivalAt = null;
+    lastMotionTimestamp = null;
     if (visibilityBound) runtimeDocument?.removeEventListener?.('visibilitychange', handleVisibility);
     visibilityBound = false;
     initialized = false;

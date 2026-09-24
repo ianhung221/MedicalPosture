@@ -1,3 +1,4 @@
+import { attachWalkingDebug } from '../context/walking-debug.js';
 import {
   applyPendingMonitoringRecommendation,
   dismissPendingMonitoringRecommendation,
@@ -14,6 +15,7 @@ import {
 import {
   buildSessionContext,
   evaluateContextRecommendation,
+  getContextSnapshot,
   initializeContextEngine,
   requestCameraContext,
   requestMotionContext,
@@ -572,6 +574,7 @@ export function renderAssessmentPage(container) {
     }
   });
   initializeContextEngine();
+  const detachWalkingDebug = attachWalkingDebug({ getSnapshot: getContextSnapshot });
   const cleanupMonitoringRoute = () => {
     detachImuView?.(); detachImuView = null;
     imuRendererAttachToken += 1;
@@ -584,6 +587,7 @@ export function renderAssessmentPage(container) {
   return createAssessmentCleanup(
     unsubscribeSession,
     unsubscribeContext,
+    detachWalkingDebug,
     () => container.removeEventListener('click', onClick),
     cleanupMonitoringRoute,
     () => window.clearInterval(monitoringClockId),

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'posture-health-shell-v30';
+const CACHE_NAME = 'posture-health-shell-v31';
 const CACHE_PREFIX = 'posture-health-shell-';
 const AI_CACHE_NAME = 'posture-ai-assets-v1';
 const AI_CACHE_PREFIX = 'posture-ai-assets-';
@@ -14,6 +14,7 @@ const APP_SHELL = [
   './src/posture/posture-episode-tracker.js', './src/posture/reminder-policy.js', './src/posture/reminder-presentation.js', './src/imu/imu-posture-classifier.js',
   './src/context/capability-detector.js', './src/context/motion-sampler.js', './src/context/activity-detector.js', './src/context/smart-mode-rules.js', './src/context/context-engine.js',
   './src/sensors/sensor-permission.js',
+  './src/context/walking-debug.js',
   './src/imu/imu-head-anatomy.js',
   './src/imu/imu-occlusion-index.js',
   './src/imu/imu-config.js', './src/imu/imu-debug-config.js', './src/imu/imu-sensor-source.js', './src/imu/orientation-normalizer.js', './src/imu/orientation-smoother.js', './src/imu/imu-calibration.js', './src/imu/imu-visual-mapper.js', './src/imu/imu-monitoring-engine.js', './src/imu/imu-3d-orientation-adapter.js', './src/imu/imu-spatial-guides.js', './src/imu/imu-head-renderer.js', './src/imu/imu-head-deformation.js',
