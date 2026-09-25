@@ -20,7 +20,9 @@ export const DEFAULT_ACTIVITY_CONFIG = Object.freeze({
   peakMinCount: 4,
   cadenceMinHz: 1,
   cadenceMaxHz: 3,
-  peakIntervalCvMax: 0.2,
+  // Competition-prototype operating threshold from controlled handheld iPhone
+  // walking vs regular shaking observations; not clinical or universal HAR.
+  peakValleyAmplitudeCvMin: 0.10,
   confirmationCorrelationMin: 0.65,
   confirmationWindows: 2,
   walkingStayRmsMin: 0.28,
@@ -65,28 +67,34 @@ export function extractPeakFeatures(samples, configuration = {}) {
   const intervalMean = average(peakIntervalsMs);
   const estimatedCadenceHz = valid ? 1000 / median(peakIntervalsMs) : null;
   const peakIntervalCv = valid ? Math.sqrt(average(peakIntervalsMs.map((value) => (value - intervalMean) ** 2))) / intervalMean : null;
-  // Diagnostic-only troughs between the already-selected acceleration peaks.
-  // They never participate in candidate or confirmation decisions.
+  // Troughs between the already-selected acceleration peaks. Their amplitude
+  // variation is used only by strict confirmation, never candidate classification.
   const amplitudes = [];
-  if (configuration.diagnosticTelemetry) {
-    let sampleIndex = 0;
-    for (let index = 1; index < peaks.length; index += 1) {
-      while (sampleIndex < samples.length && samples[sampleIndex].timestamp <= peaks[index - 1].timestamp) sampleIndex += 1;
-      let valley = Infinity;
-      while (sampleIndex < samples.length && samples[sampleIndex].timestamp < peaks[index].timestamp) {
-        valley = Math.min(valley, values[sampleIndex]);
-        sampleIndex += 1;
-      }
-      if (!Number.isFinite(valley)) continue;
-      amplitudes.push(Math.max(0, (peaks[index - 1].amplitude + peaks[index].amplitude) / 2 - valley));
+  let sampleIndex = 0;
+  for (let index = 1; index < peaks.length; index += 1) {
+    while (sampleIndex < samples.length && samples[sampleIndex].timestamp <= peaks[index - 1].timestamp) sampleIndex += 1;
+    let valley = Infinity;
+    while (sampleIndex < samples.length && samples[sampleIndex].timestamp < peaks[index].timestamp) {
+      valley = Math.min(valley, values[sampleIndex]);
+      sampleIndex += 1;
     }
+    if (!Number.isFinite(valley)) continue;
+    amplitudes.push(Math.max(0, (peaks[index - 1].amplitude + peaks[index].amplitude) / 2 - valley));
   }
   const amplitudeMean = amplitudes.length ? average(amplitudes) : null;
   const amplitudeCv = amplitudes.length >= 2 && amplitudeMean > 0
     ? Math.sqrt(average(amplitudes.map((value) => (value - amplitudeMean) ** 2))) / amplitudeMean : null;
   return { peakThreshold: threshold, peakCount: peaks.length, peakTimestamps, peakIntervalsMs,
     estimatedCadenceHz, estimatedCadenceSpm: valid ? estimatedCadenceHz * 60 : null, peakIntervalCv,
-    ...(configuration.diagnosticTelemetry ? { valleyCount: amplitudes.length, meanPeakValleyAmplitude: amplitudeMean, peakValleyAmplitudeCv: amplitudeCv } : {}) };
+    valleyCount: amplitudes.length, meanPeakValleyAmplitude: amplitudeMean, peakValleyAmplitudeCv: amplitudeCv };
+}
+
+export function passesWalkingConfirmation({ walkingCandidate, peakCountPass, cadencePass,
+  peakValleyAmplitudeCv, autocorrelation, quality }, configuration = {}) {
+  const config = { ...DEFAULT_ACTIVITY_CONFIG, ...configuration };
+  return Boolean(walkingCandidate && peakCountPass && cadencePass
+    && Number.isFinite(peakValleyAmplitudeCv) && peakValleyAmplitudeCv >= config.peakValleyAmplitudeCvMin
+    && autocorrelation >= config.confirmationCorrelationMin && quality === 'direct');
 }
 
 export function extractGyroFeatures(samples) {
@@ -237,9 +245,10 @@ export function createActivityDetector(configuration = {}) {
       && features.dominantFrequency >= config.walkingFrequencyMin - 1e-9 && features.dominantFrequency <= config.walkingFrequencyMax + 1e-9;
     const peakCountPass = peaks.peakCount >= config.peakMinCount;
     const cadencePass = peaks.estimatedCadenceHz !== null && peaks.estimatedCadenceHz >= config.cadenceMinHz - 1e-9 && peaks.estimatedCadenceHz <= config.cadenceMaxHz + 1e-9;
-    const intervalConsistencyPass = peaks.peakIntervalCv !== null && peaks.peakIntervalCv <= config.peakIntervalCvMax;
-    const confirmationPass = walkingCandidate && peakCountPass && cadencePass && intervalConsistencyPass
-      && features.periodicity >= config.confirmationCorrelationMin && quality === 'direct';
+    const amplitudeVariationPass = Number.isFinite(peaks.peakValleyAmplitudeCv)
+      && peaks.peakValleyAmplitudeCv >= config.peakValleyAmplitudeCvMin;
+    const confirmationPass = passesWalkingConfirmation({ walkingCandidate, peakCountPass, cadencePass,
+      peakValleyAmplitudeCv: peaks.peakValleyAmplitudeCv, autocorrelation: features.periodicity, quality }, config);
     confirmedWindows = confirmationPass ? confirmedWindows + 1 : 0;
     const stayPass = features.rms >= config.walkingStayRmsMin && features.variance >= config.walkingStayVarianceMin
       && features.periodicity >= config.walkingStayCorrelationMin
@@ -269,7 +278,8 @@ export function createActivityDetector(configuration = {}) {
     if (!periodicityPass) reasons.push('insufficient-periodicity');
     if (!peakCountPass) reasons.push('insufficient-peaks');
     if (!cadencePass) reasons.push('cadence-out-of-range-or-invalid');
-    if (!intervalConsistencyPass) reasons.push('irregular-or-insufficient-intervals');
+    if (peaks.peakValleyAmplitudeCv === null) reasons.push('insufficient-amplitude-variation-data');
+    else if (!amplitudeVariationPass) reasons.push('amplitude-variation-below-prototype-threshold');
     if (features.periodicity < config.confirmationCorrelationMin) reasons.push('confirmation-correlation-low');
     if (quality !== 'direct') reasons.push('derived-not-confirmable');
     if (confirmedWindows < config.confirmationWindows) reasons.push('confirmation-windows-pending');
@@ -277,7 +287,7 @@ export function createActivityDetector(configuration = {}) {
     walkingEvidence = { evaluatedAt: sample.timestamp, rms: features.rms, variance: features.variance,
       autocorrelation: features.periodicity, dominantFrequency: features.dominantFrequency,
       sampleRate: features.sampleRate, sampleCount: samples.length, quality, ...peaks,
-      energyPass, periodicityPass, peakCountPass, cadencePass, intervalConsistencyPass,
+      energyPass, periodicityPass, peakCountPass, cadencePass, amplitudeVariationPass,
       walkingCandidate, walkingConfirmed, confirmationPass, confirmedWindows, weakWindows, stayPass,
       confidence: walkingConfirmed ? 'high' : walkingCandidate ? 'medium' : 'low', transitionReason, reasons,
       ...(diagnosticTelemetry ? { gyro } : {}) };
