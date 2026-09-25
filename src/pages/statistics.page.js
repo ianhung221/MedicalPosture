@@ -96,7 +96,7 @@ export function renderStatisticsPage(container) {
 
   function renderSafety(data) {
     return `
-      <div class="planning-banner"><span class="material-symbols-rounded" aria-hidden="true">science</span><div><strong>行走安全分析為規劃功能</strong><p>以下數據用於展示未來 IMU 行走與頭部姿態分析介面，並非真實感測結果。</p></div></div>
+      <div class="planning-banner"><span class="material-symbols-rounded" aria-hidden="true">science</span><div><strong>歷史行走安全分析為規劃功能</strong><p>本機行走低頭提醒已實作；以下歷史統計仍為 Mock Data，並非真實感測結果。</p></div></div>
       <section class="metric-strip" aria-label="${data.label}行走安全指標">
         ${metricCard('行走時間', data.walkTime, 'directions_walk', 'brand')}
         ${metricCard('行走低頭時間', data.walkLow, 'phone_android', 'danger')}
@@ -120,9 +120,9 @@ export function renderStatisticsPage(container) {
       </section>
 
       <section class="safety-sequence" aria-label="行走安全規劃流程">
-        <div><span class="material-symbols-rounded" aria-hidden="true">directions_walk</span><strong>判斷行走狀態</strong><small>規劃中的活動辨識</small></div>
+        <div><span class="material-symbols-rounded" aria-hidden="true">directions_walk</span><strong>判斷行走狀態</strong><small>本機活動辨識</small></div>
         <span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span>
-        <div><span class="material-symbols-rounded" aria-hidden="true">south</span><strong>持續低頭</strong><small>規劃中的頭部姿態</small></div>
+        <div><span class="material-symbols-rounded" aria-hidden="true">south</span><strong>持續低頭</strong><small>手機相對姿態概念驗證</small></div>
         <span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span>
         <div><span class="material-symbols-rounded" aria-hidden="true">campaign</span><strong>安全提醒</strong><small>降低行走風險</small></div>
       </section>`;

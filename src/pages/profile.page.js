@@ -72,15 +72,15 @@ export function renderProfilePage(container) {
           <section class="setting-section technology-status" aria-labelledby="technology-title">
             <div class="setting-section__heading"><span class="setting-section__icon material-symbols-rounded" aria-hidden="true">memory</span><div><h2 id="technology-title">技術與同步</h2><p>清楚區分既有成果與平台規劃功能。</p></div></div>
             <div class="technology-list">
-              <div><span class="icon-tile icon-tile--ai"><span class="material-symbols-rounded" aria-hidden="true">videocam</span></span><p><strong>MediaPipe Pose</strong><small>Python 桌面原型已完成；尚未直接整合進 PWA。</small></p><span class="status-chip status-chip--healthy">既有成果</span></div>
-              <div><span class="icon-tile icon-tile--imu"><span class="material-symbols-rounded" aria-hidden="true">sensors</span></span><p><strong>IMU／穿戴感測</strong><small>耳機、智慧帽夾與行走安全仍為規劃功能。</small></p><span class="status-chip status-chip--imu">規劃中</span></div>
+              <div><span class="icon-tile icon-tile--ai"><span class="material-symbols-rounded" aria-hidden="true">videocam</span></span><p><strong>MediaPipe Pose</strong><small>Python 桌面原型與 Web 本機辨識已完成；影像不保存、不上傳。</small></p><span class="status-chip status-chip--healthy">本機辨識</span></div>
+              <div><span class="icon-tile icon-tile--imu"><span class="material-symbols-rounded" aria-hidden="true">sensors</span></span><p><strong>IMU／穿戴感測</strong><small>手機姿態與行走低頭安全提醒已實作；耳機、智慧帽夾尚未整合。</small></p><span class="status-chip status-chip--imu">手機概念驗證</span></div>
               <div><span class="icon-tile"><span class="material-symbols-rounded" aria-hidden="true">cloud_sync</span></span><p><strong>雲端同步</strong><small>Firebase 尚未串接，本頁不會傳送任何資料。</small></p><span class="status-chip status-chip--neutral">Demo</span></div>
             </div>
           </section>
 
           <section class="setting-section about-platform" aria-labelledby="about-title">
-            <div><span class="brand-mini material-symbols-rounded" aria-hidden="true">health_and_safety</span><div><h2 id="about-title">青少年智慧姿勢管理平台</h2><p>PWA 第二版介面 Demo・支援手機、平板與電腦</p></div></div>
-            <span>版本 2.0 UI Demo</span>
+            <div><span class="brand-mini material-symbols-rounded" aria-hidden="true">health_and_safety</span><div><h2 id="about-title">青少年智慧姿勢管理平台</h2><p>跨平台 PWA・支援手機、平板與電腦</p></div></div>
+            <span>競賽概念驗證平台</span>
           </section>
         </div>
       </div>

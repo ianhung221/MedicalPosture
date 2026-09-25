@@ -18,6 +18,7 @@ import { aiMonitoringEngine } from '../ai/ai-monitoring-engine.js';
 import { DEFAULT_MODEL_VARIANT } from '../ai/mediapipe-config.js';
 import { imuMonitoringEngine } from '../imu/imu-monitoring-engine.js';
 import { reminderPresentation } from '../posture/reminder-presentation.js';
+import { showMonitoringDetails } from '../utils/assessment-navigation.js';
 
 const modeLabels = { smart: '智慧模式', ai: 'AI 坐姿辨識', imu: 'IMU 姿態感測' };
 const methodLabels = { ai: 'AI', imu: 'IMU', none: '不監測' };
@@ -59,7 +60,7 @@ export function monitoringControlsMarkup() {
         <div class="monitoring-panel__actions">
           <button class="button button--secondary" type="button" data-monitoring-action="toggle-pause"><span class="material-symbols-rounded" aria-hidden="true" data-panel-pause-icon>pause</span><span data-panel-pause-label>暫停</span></button>
           <button class="button button--danger-quiet" type="button" data-monitoring-action="request-end"><span class="material-symbols-rounded" aria-hidden="true">stop_circle</span>結束偵測</button>
-          <a class="text-button monitoring-panel__link" href="#/assessment">深入了解</a>
+          <button class="text-button monitoring-panel__link" type="button" data-monitoring-action="view-details">深入了解</button>
         </div>
       </section>
 
@@ -152,6 +153,7 @@ export function mountMonitoringControls(app) {
     const trigger = event.target.closest('[data-monitoring-action]');
     if (!trigger || !currentSession) return;
     const action = trigger.dataset.monitoringAction;
+    if (action === 'view-details') { setPanelOpen(false); showMonitoringDetails(currentSession); }
     if (action === 'toggle-details') setPanelOpen(panel.hidden);
     if (action === 'toggle-pause') {
       if (currentSession.status === 'paused') {

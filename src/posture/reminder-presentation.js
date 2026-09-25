@@ -14,6 +14,17 @@ export function reminderPresentationLevel(level) {
   return REMINDER_PRESENTATION_LEVELS.NORMAL;
 }
 
+// Posture-card tone follows policy output, not a raw classifier label.
+export function reminderPresentationTone(session) {
+  const posture = session.postureRuntime;
+  if (session.status === 'paused' || posture?.suspended) return 'neutral';
+  if (session.walkingSafety?.active) return REMINDER_PRESENTATION_LEVELS.HIGH_RISK;
+  if (!posture || ['UNKNOWN', 'CALIBRATING', 'LEFT_SEAT'].includes(posture.state)) return 'neutral';
+  const tone = reminderPresentationLevel(posture.level);
+  // Red requires actual walking-safety evidence, never a posture label alone.
+  return tone === REMINDER_PRESENTATION_LEVELS.HIGH_RISK ? REMINDER_PRESENTATION_LEVELS.ATTENTION : tone;
+}
+
 export function reminderPresentation(session) {
   const posture = session.postureRuntime;
   if (session.status === 'paused' || posture?.suspended) return { label: '監測已暫停', activeStrategy: null };

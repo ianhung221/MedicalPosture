@@ -1,4 +1,5 @@
 import { getContextDetails, subscribeMonitoringSession } from '../state/monitoring-session.js';
+import { navigateToAssessment } from '../utils/assessment-navigation.js';
 
 export function renderHomePage(container) {
   container.innerHTML = `
@@ -45,12 +46,12 @@ export function renderHomePage(container) {
           </article>
           <article class="status-row status-row--healthy">
             <span class="status-row__icon material-symbols-rounded" aria-hidden="true">directions_walk</span>
-            <div><span>行走安全</span><strong>目前安全</strong><small>規劃功能・Mock 狀態</small></div>
+            <div><span>行走安全</span><strong>目前安全</strong><small>Mock 狀態・非即時資料</small></div>
             <span class="status-dot" aria-hidden="true"></span>
           </article>
           <article class="status-row status-row--brand" data-home-monitoring-status>
             <span class="status-row__icon material-symbols-rounded" aria-hidden="true">sensors</span>
-            <div><span>目前偵測狀態</span><strong data-home-monitoring-title>目前未監測</strong><small data-home-monitoring-copy>可前往偵測頁選擇示範模式</small></div>
+            <div><span>目前偵測狀態</span><strong data-home-monitoring-title>目前未監測</strong><small data-home-monitoring-copy>可選擇智慧、AI 或手機 IMU 監測</small></div>
             <a href="#/assessment" aria-label="前往偵測頁"><span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span></a>
           </article>
         </div>
@@ -71,22 +72,21 @@ export function renderHomePage(container) {
         <section class="quick-start-panel" aria-labelledby="quick-start-title">
           <div class="section-title-row">
             <div><span class="section-kicker">選擇偵測方式</span><h2 id="quick-start-title">快速開始</h2></div>
-            <span class="demo-tag">示範流程</span>
           </div>
           <div class="quick-mode-list">
-            <a class="quick-mode quick-mode--smart interactive-card" href="#/assessment">
+            <a class="quick-mode quick-mode--smart interactive-card" href="#/assessment" data-quick-start="smart">
               <span class="quick-mode__icon material-symbols-rounded" aria-hidden="true">auto_awesome</span>
               <span><strong>智慧模式</strong><small>依情境與可用裝置提供建議</small></span>
               <span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span>
             </a>
-            <a class="quick-mode quick-mode--ai interactive-card" href="#/assessment">
+            <a class="quick-mode quick-mode--ai interactive-card" href="#/assessment" data-quick-start="ai">
               <span class="quick-mode__icon material-symbols-rounded" aria-hidden="true">videocam</span>
               <span><strong>AI 坐姿辨識</strong><small>適合有可用攝影機的環境</small></span>
               <span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span>
             </a>
-            <a class="quick-mode quick-mode--imu interactive-card" href="#/assessment">
+            <a class="quick-mode quick-mode--imu interactive-card" href="#/assessment" data-quick-start="imu">
               <span class="quick-mode__icon material-symbols-rounded" aria-hidden="true">sensors</span>
-              <span><strong>IMU 姿態感測</strong><small>規劃中的穿戴與行走情境</small></span>
+              <span><strong>IMU 姿態感測</strong><small>手機姿態與行走安全概念驗證</small></span>
               <span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span>
             </a>
           </div>
@@ -106,7 +106,14 @@ export function renderHomePage(container) {
       </section>
     </div>`;
 
-  return subscribeMonitoringSession((session) => {
+  const onQuickStart = (event) => {
+    const trigger = event.target.closest('[data-quick-start]');
+    if (!trigger || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || (event.button != null && event.button !== 0)) return;
+    event.preventDefault();
+    navigateToAssessment(trigger.dataset.quickStart);
+  };
+  container.addEventListener('click', onQuickStart);
+  const unsubscribe = subscribeMonitoringSession((session) => {
     const row = container.querySelector('[data-home-monitoring-status]');
     if (!row) return;
     const title = row.querySelector('[data-home-monitoring-title]');
@@ -116,16 +123,18 @@ export function renderHomePage(container) {
 
     if (session.status === 'idle') {
       title.textContent = '目前未監測';
-      copy.textContent = '可前往偵測頁選擇示範模式';
+      copy.textContent = '可選擇智慧、AI 或手機 IMU 監測';
       icon.textContent = 'sensors';
       return;
     }
 
-    const context = getContextDetails(session.context);
+    const context = getContextDetails(session.context, session.contextDetails);
+    const aiPending = session.activeMethod === 'ai' && session.aiRuntime?.runtimeKind !== 'mediapipe-web';
+    const imuPending = session.activeMethod === 'imu' && session.imuRuntime?.runtimeKind !== 'browser-sensors';
     title.textContent = session.status === 'paused'
       ? '偵測已暫停'
-      : session.activeMethod === 'ai' ? 'AI 坐姿偵測中' : session.activeMethod === 'imu' ? 'IMU 行走安全模式' : '智慧模式・目前不監測';
-    copy.textContent = `${context.label}・${context.recommendation}・Demo`;
+      : aiPending ? 'AI 等待啟動' : imuPending ? 'IMU 等待啟動' : session.activeMethod === 'ai' ? 'AI 坐姿偵測中' : session.activeMethod === 'imu' ? 'IMU 姿態監測中' : '智慧模式・目前不監測';
+    copy.textContent = `${context.label}・${context.recommendation}`;
     icon.textContent = session.status === 'paused' ? 'pause_circle' : session.activeMethod === 'ai' ? 'videocam' : session.activeMethod === 'imu' ? 'sensors' : 'school';
     if (session.status === 'paused') row.classList.add('status-row--warning');
     else if (session.riskLevel === 'high-risk') row.classList.add('status-row--danger');
@@ -133,4 +142,5 @@ export function renderHomePage(container) {
     else if (session.riskLevel === 'awareness') row.classList.add('status-row--awareness');
     else row.classList.add('status-row--healthy');
   });
+  return () => { unsubscribe(); container.removeEventListener('click', onQuickStart); };
 }

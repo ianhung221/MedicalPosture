@@ -29,7 +29,7 @@ const initialImuRuntime = () => ({
 const CONTEXTS = {
   'fixed-indoor': {
     label: '室內固定使用',
-    device: '可用攝影機（Demo）',
+    device: '攝影機',
     recommendation: 'AI 坐姿辨識',
     method: 'ai',
     riskLevel: 'normal',
@@ -41,7 +41,7 @@ const CONTEXTS = {
     recommendation: 'IMU 姿態感測',
     method: 'imu',
     riskLevel: 'high-risk',
-    reason: '以手機感測器驗證相對姿態資料流程；尚未進行行走低頭分類或穿戴裝置整合。',
+    reason: '以手機感測器驗證相對姿態資料流程；可結合行走與低頭狀態提供安全提醒；尚未整合穿戴裝置。',
   },
   'wearing-device': {
     label: '無攝影機／有穿戴裝置',
@@ -344,7 +344,7 @@ export function endMonitoring(at = Date.now()) {
     reminderTransitionCount: posture?.transitionCount ?? null,
     reminders: posture ? `${posture.outputCount} 次` : hasRealAi ? `${completed.aiRuntime.reminders} 次` : '—',
     insight: completed.activeMethod === 'imu'
-      ? hasRealImu ? '本次以手機相對 Pitch 進行低頭概念驗證；提醒為工程原型參數，不作醫療診斷。尚未整合穿戴裝置或行走風險分類。' : '本次尚未建立真實手機姿態資料；穿戴式 IMU 仍為未來整合方向。'
+      ? hasRealImu ? '本次以手機相對 Pitch 進行低頭概念驗證；提醒為工程原型參數，不作醫療診斷。已提供本機行走低頭安全提醒，行走安全事件尚未納入本次摘要統計；穿戴裝置仍未整合。' : '本次尚未建立真實手機姿態資料；穿戴式 IMU 仍為未來整合方向。'
       : completed.activeMethod === 'ai'
         ? hasRealAi ? '本次摘要由 MediaPipe Web 本機辨識產生，僅供姿勢健康提醒，不作醫療診斷。' : '本次尚未建立真實 AI 偵測資料。'
         : '本次情境維持不監測，符合以學習優先且不過度干擾的設計原則。',
