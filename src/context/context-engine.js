@@ -2,6 +2,7 @@ import { probeCapabilities, requestCameraCapability } from './capability-detecto
 import { createMotionSampler } from './motion-sampler.js';
 import { createActivityDetector, DEFAULT_ACTIVITY_CONFIG } from './activity-detector.js';
 import { evaluateSmartMode } from './smart-mode-rules.js';
+import { walkingDebugEnabled } from './walking-debug.js';
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const defaultActivity = () => ({ state: 'unknown', confidence: 'low', observedForMs: 0, quality: 'direct', stale: false });
@@ -21,7 +22,8 @@ function initialSnapshot(environment = {}) {
   };
 }
 
-export function createContextEngine({ environment = {}, now = Date.now, capabilityProbe = probeCapabilities, cameraRequester = requestCameraCapability, samplerFactory = createMotionSampler, activityDetectorFactory = createActivityDetector } = {}) {
+export function createContextEngine({ environment = {}, now = Date.now, capabilityProbe = probeCapabilities, cameraRequester = requestCameraCapability, samplerFactory = createMotionSampler,
+  activityDetectorFactory = () => createActivityDetector({ diagnosticTelemetry: walkingDebugEnabled() }) } = {}) {
   const listeners = new Set();
   const runtimeDocument = environment.document ?? (typeof document === 'undefined' ? null : document);
   let snapshot = initialSnapshot(environment);

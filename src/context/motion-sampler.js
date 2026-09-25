@@ -6,6 +6,11 @@ function finiteVector(vector) {
   return values.every(Number.isFinite) ? { x: values[0], y: values[1], z: values[2] } : null;
 }
 
+function finiteRotationRate(rate) {
+  if (!rate || !['alpha', 'beta', 'gamma'].every((axis) => typeof rate[axis] === 'number' && Number.isFinite(rate[axis]))) return null;
+  return { alpha: rate.alpha, beta: rate.beta, gamma: rate.gamma };
+}
+
 export function normalizeMotionEvent(event, now = Date.now) {
   const acceleration = finiteVector(event.acceleration);
   const accelerationIncludingGravity = finiteVector(event.accelerationIncludingGravity);
@@ -15,6 +20,7 @@ export function normalizeMotionEvent(event, now = Date.now) {
     interval: Number.isFinite(event.interval) ? event.interval : null,
     acceleration,
     accelerationIncludingGravity,
+    rotationRate: finiteRotationRate(event.rotationRate),
   };
 }
 

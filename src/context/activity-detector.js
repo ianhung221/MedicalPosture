@@ -65,8 +65,40 @@ export function extractPeakFeatures(samples, configuration = {}) {
   const intervalMean = average(peakIntervalsMs);
   const estimatedCadenceHz = valid ? 1000 / median(peakIntervalsMs) : null;
   const peakIntervalCv = valid ? Math.sqrt(average(peakIntervalsMs.map((value) => (value - intervalMean) ** 2))) / intervalMean : null;
+  // Diagnostic-only troughs between the already-selected acceleration peaks.
+  // They never participate in candidate or confirmation decisions.
+  const amplitudes = [];
+  if (configuration.diagnosticTelemetry) {
+    let sampleIndex = 0;
+    for (let index = 1; index < peaks.length; index += 1) {
+      while (sampleIndex < samples.length && samples[sampleIndex].timestamp <= peaks[index - 1].timestamp) sampleIndex += 1;
+      let valley = Infinity;
+      while (sampleIndex < samples.length && samples[sampleIndex].timestamp < peaks[index].timestamp) {
+        valley = Math.min(valley, values[sampleIndex]);
+        sampleIndex += 1;
+      }
+      if (!Number.isFinite(valley)) continue;
+      amplitudes.push(Math.max(0, (peaks[index - 1].amplitude + peaks[index].amplitude) / 2 - valley));
+    }
+  }
+  const amplitudeMean = amplitudes.length ? average(amplitudes) : null;
+  const amplitudeCv = amplitudes.length >= 2 && amplitudeMean > 0
+    ? Math.sqrt(average(amplitudes.map((value) => (value - amplitudeMean) ** 2))) / amplitudeMean : null;
   return { peakThreshold: threshold, peakCount: peaks.length, peakTimestamps, peakIntervalsMs,
-    estimatedCadenceHz, estimatedCadenceSpm: valid ? estimatedCadenceHz * 60 : null, peakIntervalCv };
+    estimatedCadenceHz, estimatedCadenceSpm: valid ? estimatedCadenceHz * 60 : null, peakIntervalCv,
+    ...(configuration.diagnosticTelemetry ? { valleyCount: amplitudes.length, meanPeakValleyAmplitude: amplitudeMean, peakValleyAmplitudeCv: amplitudeCv } : {}) };
+}
+
+export function extractGyroFeatures(samples) {
+  const values = samples.filter((sample) => sample.rotationRate).map((sample) => {
+    const { alpha, beta, gamma } = sample.rotationRate;
+    return Math.hypot(alpha, beta, gamma);
+  });
+  if (values.length < 2) return { available: values.length > 0, sampleCount: values.length, rms: null, variance: null };
+  const mean = average(values);
+  return { available: true, sampleCount: values.length,
+    rms: Math.sqrt(average(values.map((value) => value ** 2))),
+    variance: average(values.map((value) => (value - mean) ** 2)) };
 }
 
 export function extractActivityFeatures(samples) {
@@ -108,6 +140,7 @@ export function extractActivityFeatures(samples) {
 
 export function createActivityDetector(configuration = {}) {
   const config = { ...DEFAULT_ACTIVITY_CONFIG, ...configuration };
+  const diagnosticTelemetry = Boolean(configuration.diagnosticTelemetry);
   let samples = [];
   let gravity = null;
   let firstObservedAt = null;
@@ -184,7 +217,11 @@ export function createActivityDetector(configuration = {}) {
     if (!normalized || !['x', 'y', 'z'].every((axis) => Number.isFinite(normalized.vector[axis]))) return result();
     stale = false;
     firstObservedAt ??= sample.timestamp;
-    samples.push({ timestamp: sample.timestamp, vector: normalized.vector, quality: normalized.quality });
+    const rotationRate = diagnosticTelemetry && sample.rotationRate
+      && ['alpha', 'beta', 'gamma'].every((axis) => typeof sample.rotationRate[axis] === 'number' && Number.isFinite(sample.rotationRate[axis]))
+      ? sample.rotationRate : null;
+    samples.push({ timestamp: sample.timestamp, vector: normalized.vector, quality: normalized.quality,
+      ...(diagnosticTelemetry ? { rotationRate } : {}) });
     samples = samples.filter((entry) => sample.timestamp - entry.timestamp <= config.windowMs);
     quality = samples.some((entry) => entry.quality === 'derived') ? 'derived' : 'direct';
     if (samples.length < config.minSamples || sample.timestamp - samples[0].timestamp < config.windowMs * 0.8) return result();
@@ -192,6 +229,7 @@ export function createActivityDetector(configuration = {}) {
     lastEvaluatedAt = sample.timestamp;
     const features = extractActivityFeatures(samples);
     const peaks = extractPeakFeatures(samples, config);
+    const gyro = diagnosticTelemetry ? extractGyroFeatures(samples) : null;
     let [nextCandidate, nextConfidence] = classify(features, sample.timestamp - firstObservedAt);
     const walkingCandidate = nextCandidate === 'walking';
     const energyPass = features.rms >= config.walkingRmsMin && features.variance >= config.walkingVarianceMin;
@@ -241,7 +279,8 @@ export function createActivityDetector(configuration = {}) {
       sampleRate: features.sampleRate, sampleCount: samples.length, quality, ...peaks,
       energyPass, periodicityPass, peakCountPass, cadencePass, intervalConsistencyPass,
       walkingCandidate, walkingConfirmed, confirmationPass, confirmedWindows, weakWindows, stayPass,
-      confidence: walkingConfirmed ? 'high' : walkingCandidate ? 'medium' : 'low', transitionReason, reasons };
+      confidence: walkingConfirmed ? 'high' : walkingCandidate ? 'medium' : 'low', transitionReason, reasons,
+      ...(diagnosticTelemetry ? { gyro } : {}) };
     return result();
   };
 
