@@ -1,33 +1,61 @@
-// Explicit per-URL opt-in; normal product pages have no debug DOM or timer.
-export function walkingDebugEnabled(search = '') {
-  return new URLSearchParams(search).get('walkingDebug') === '1';
+// URL-only opt-in. The normal Assessment page allocates no debug DOM or timer.
+export function walkingDebugEnabled(url = globalThis.location?.href || '') {
+  try { return new URL(url, 'https://debug.invalid/').searchParams.get('walkingDebug') === '1'; }
+  catch { return false; }
 }
+
+const number = (value, digits = 3) => Number.isFinite(value) ? value.toFixed(digits) : '—';
+const flag = (value) => value === undefined ? '—' : value ? 'PASS' : 'FAIL';
 
 export function formatWalkingDebug(snapshot) {
-  const evidence = snapshot.activity.walkingEvidence;
-  return JSON.stringify({
-    gate: 'W1 — handheld prototype; periodic shaking can mimic walking',
-    activity: snapshot.activity.state,
-    confidence: snapshot.activity.confidence,
-    motion: snapshot.motion.status,
-    visibility: snapshot.visibility,
-    walkingEvidence: evidence || { walkingConfirmed: false, reason: 'waiting-for-observation-window' },
-  }, null, 2);
+  const activity = snapshot.activity || {};
+  const evidence = activity.walkingEvidence;
+  const fields = [
+    ['Activity', activity.state || 'unknown'],
+    ['Confidence', activity.confidence || 'low'],
+    ['Quality', evidence?.quality || activity.quality || '—'],
+    ['Motion', snapshot.motion?.status || 'unknown'],
+    ['Visibility', snapshot.visibility || 'unknown'],
+    ['RMS', number(evidence?.rms)],
+    ['Variance', number(evidence?.variance)],
+    ['Autocorrelation', number(evidence?.autocorrelation)],
+    ['Dominant frequency', number(evidence?.dominantFrequency) + ' Hz'],
+    ['Sample rate', number(evidence?.sampleRate, 1) + ' Hz'],
+    ['Sample count', evidence?.sampleCount ?? '—'],
+    ['Peak count', evidence?.peakCount ?? '—'],
+    ['Cadence Hz', number(evidence?.estimatedCadenceHz) + ' Hz'],
+    ['Cadence steps/min', number(evidence?.estimatedCadenceSpm, 1)],
+    ['Interval CV', number(evidence?.peakIntervalCv)],
+    ['Walking candidate', flag(evidence?.walkingCandidate)],
+    ['Walking confirmed', flag(evidence?.walkingConfirmed)],
+    ['Candidate energy / periodicity', `${flag(evidence?.energyPass)} / ${flag(evidence?.periodicityPass)}`],
+    ['Confirmed peaks / cadence / intervals', `${flag(evidence?.peakCountPass)} / ${flag(evidence?.cadencePass)} / ${flag(evidence?.intervalConsistencyPass)}`],
+    ['Confirmed strict window', flag(evidence?.confirmationPass)],
+    ['Confirmed windows', evidence?.confirmedWindows ?? '—'],
+    ['Transition reason', evidence?.transitionReason || '—'],
+    ['Failure reasons', evidence?.reasons?.join(', ') || (evidence ? 'none' : 'Waiting for motion samples...')],
+    ['Evidence timestamp', evidence?.evaluatedAt ?? '—'],
+    ['Sample age', number(evidence?.sampleAgeMs, 0) + ' ms'],
+    ['Fresh', flag(evidence?.fresh)],
+  ];
+  return fields.map(([label, value]) => `${label}: ${value}`).join('\n');
 }
 
-export function attachWalkingDebug({ getSnapshot, document: doc = globalThis.document,
-  search = globalThis.location?.search || '', schedule = globalThis.setInterval,
+export function attachWalkingDebug({ getSnapshot, host, document: doc = globalThis.document,
+  url = globalThis.location?.href || '', schedule = globalThis.setInterval,
   cancel = globalThis.clearInterval } = {}) {
-  if (!walkingDebugEnabled(search) || !doc?.body) return () => {};
+  if (!walkingDebugEnabled(url) || !host || !doc) return () => {};
   const panel = doc.createElement('details');
   panel.dataset.walkingDebug = '';
-  panel.style.cssText = 'position:fixed;left:8px;right:8px;bottom:104px;z-index:2000;max-height:45vh;overflow:auto;background:#fff;color:#17243a;border:1px solid #71849c;border-radius:8px;padding:8px;font:12px/1.4 monospace;box-sizing:border-box';
+  panel.style.cssText = 'margin:1.5rem 0 5rem;padding:1rem;max-width:100%;box-sizing:border-box;border:1px solid #71849c;border-radius:12px;background:#fff;color:#17243a;font:12px/1.5 monospace';
   const title = doc.createElement('summary');
-  title.textContent = 'Gate W1 · Walking evidence（點此展開）';
+  title.textContent = 'Gate W1 · Walking evidence';
+  title.style.cssText = 'cursor:pointer;font-weight:700;font-size:14px';
   const output = doc.createElement('pre');
-  output.style.cssText = 'white-space:pre-wrap;overflow-wrap:anywhere;margin:8px 0';
+  output.style.cssText = 'white-space:pre-wrap;overflow-wrap:anywhere;margin:1rem 0 0';
   panel.append(title, output);
-  doc.body.append(panel);
+  const refreshMount = () => { if (panel.parentNode !== host) host.append(panel); };
+  refreshMount();
   let lastText = '';
   const update = () => {
     if (doc.hidden) return;
@@ -36,5 +64,7 @@ export function attachWalkingDebug({ getSnapshot, document: doc = globalThis.doc
   };
   update();
   const timer = schedule(update, 1000);
-  return () => { cancel(timer); panel.remove(); };
+  const cleanup = () => { cancel(timer); panel.remove(); };
+  cleanup.refreshMount = refreshMount;
+  return cleanup;
 }

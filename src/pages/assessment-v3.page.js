@@ -393,6 +393,7 @@ export function renderAssessmentPage(container) {
   let imuViewFrame = null;
   let latestImuRuntime = null;
   let imuRendererAttachToken = 0;
+  let refreshWalkingDebugMount = null;
   const monitoringClockId = window.setInterval(() => {
     if (currentSession?.status === 'monitoring') {
       if (currentSession.activeMethod === 'ai') setText(container, '[data-ai-monitoring-time]', formatDuration(getMonitoringDurationMs()));
@@ -446,6 +447,7 @@ export function renderAssessmentPage(container) {
       : currentSession.lastSummary
         ? summaryView(currentSession.lastSummary)
         : overviewView(currentContext, manualOpen, setupOpen);
+    refreshWalkingDebugMount?.();
     renderedViewKey = assessmentViewKey(currentSession, { manualOpen, setupOpen });
     renderedContextSignature = contextUiSignature(currentContext);
     if (currentSession.activeMethod !== 'imu' && !['uninitialized', 'disposed'].includes(imuHeadRenderer.getStatus())) imuHeadRenderer.dispose();
@@ -574,7 +576,8 @@ export function renderAssessmentPage(container) {
     }
   });
   initializeContextEngine();
-  const detachWalkingDebug = attachWalkingDebug({ getSnapshot: getContextSnapshot });
+  const detachWalkingDebug = attachWalkingDebug({ getSnapshot: getContextSnapshot, host: container });
+  refreshWalkingDebugMount = detachWalkingDebug.refreshMount || null;
   const cleanupMonitoringRoute = () => {
     detachImuView?.(); detachImuView = null;
     imuRendererAttachToken += 1;
