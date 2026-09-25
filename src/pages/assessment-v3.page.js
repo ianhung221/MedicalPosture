@@ -331,14 +331,15 @@ export function updateAssessmentImuUi(container, session) {
   if (!container.querySelector('[data-imu-status-panel]')) return false;
   const runtime = session.imuRuntime || {}; const calibration = runtime.calibration || {}; const orientation = runtime.orientation || {};
   const safety = session.walkingSafety;
+  const walkingActive = safety?.walkingEvidence?.active === true;
   const safetyPanel = container.querySelector('[data-imu-safety-status]');
   if (safetyPanel) safetyPanel.dataset.phase = session.status === 'paused' ? 'idle' : safety?.phase || 'idle';
-  const safetyTitle = session.status === 'paused' ? '監測已暫停' : !safety?.walkingConfirmed ? '行走尚未確認'
+  const safetyTitle = session.status === 'paused' ? '監測已暫停' : !walkingActive ? '行走尚未確認'
     : safety.phase === 'escalated' ? '行走中持續低頭，請立即注意前方'
       : safety.phase === 'high-risk' ? '行走中低頭，請注意前方'
         : safety.lowHead ? '行走低頭觀察中' : '行走已確認・目前安全';
   const safetyCopy = session.status === 'paused' ? '安全計時已重設，繼續監測後重新觀察。'
-    : !safety?.walkingConfirmed ? '確認行走後，系統才會結合目前低頭狀態評估安全提醒。'
+    : !walkingActive ? '確認行走後，系統才會結合目前低頭狀態評估安全提醒。'
       : safety.phase === 'escalated' ? safety.lastReminderKind === 'repeat' ? '持續符合行走低頭條件，已再次提醒注意前方。' : '持續符合行走低頭條件，請抬頭留意周遭。'
         : safety.phase === 'high-risk' ? '已持續超過 3 秒，請抬頭留意前方環境。'
           : safety.lowHead ? '正在確認行走與低頭是否持續，不會立即警示。' : '目前未同時出現低頭狀態。';
@@ -594,7 +595,7 @@ export function renderAssessmentPage(container) {
     }
   });
   initializeContextEngine();
-  const detachWalkingDebug = attachWalkingDebug({ getSnapshot: getContextSnapshot, host: container });
+  const detachWalkingDebug = attachWalkingDebug({ getSnapshot: getContextSnapshot, getSafetyWalking: () => imuMonitoringEngine.getSnapshot().safetyWalking, host: container });
   refreshWalkingDebugMount = detachWalkingDebug.refreshMount || null;
   const cleanupMonitoringRoute = () => {
     detachImuView?.(); detachImuView = null;

@@ -1,7 +1,7 @@
 import { reminderPresentationLevel } from '../posture/reminder-presentation.js';
 
 const clonePosture = (value) => value ? { ...value, metadata: { ...value.metadata }, counts: { ...value.counts }, transition: value.transition ? { ...value.transition } : null, lastTransition: value.lastTransition ? { ...value.lastTransition } : null } : null;
-const cloneSafety = (value) => value ? { ...value } : null;
+const cloneSafety = (value) => value ? { ...value, walkingEvidence: value.walkingEvidence ? { ...value.walkingEvidence } : null } : null;
 const posturePatch = (patch, source) => {
   if (!Object.hasOwn(patch || {}, 'postureRuntime')) return {};
   const value = patch.postureRuntime;

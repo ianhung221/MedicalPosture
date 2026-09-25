@@ -7,7 +7,7 @@ export function walkingDebugEnabled(url = globalThis.location?.href || '') {
 const number = (value, digits = 3) => Number.isFinite(value) ? value.toFixed(digits) : '—';
 const flag = (value) => value === undefined ? '—' : value ? 'PASS' : 'FAIL';
 
-export function formatWalkingDebug(snapshot) {
+export function formatWalkingDebug(snapshot, safetyWalking = null) {
   const activity = snapshot.activity || {};
   const evidence = activity.walkingEvidence;
   const fields = [
@@ -45,11 +45,18 @@ export function formatWalkingDebug(snapshot) {
     ['Evidence timestamp', evidence?.evaluatedAt ?? '—'],
     ['Sample age', number(evidence?.sampleAgeMs, 0) + ' ms'],
     ['Fresh', flag(evidence?.fresh)],
+    ['Safety walking', flag(safetyWalking?.active)],
+    ['Safety source', safetyWalking?.source || '—'],
+    ['Safety candidate elapsed', number(safetyWalking?.candidateElapsedMs, 0) + ' ms'],
+    ['Safety candidate evaluations', safetyWalking?.candidateEvaluations ?? '—'],
+    ['Safety dropout elapsed', number(safetyWalking?.dropoutElapsedMs, 0) + ' ms'],
+    ['Safety evidence age', number(safetyWalking?.ageMs, 0) + ' ms'],
+    ['Safety reason', safetyWalking?.reason || '—'],
   ];
   return fields.map(([label, value]) => `${label}: ${value}`).join('\n');
 }
 
-export function attachWalkingDebug({ getSnapshot, host, document: doc = globalThis.document,
+export function attachWalkingDebug({ getSnapshot, getSafetyWalking = () => null, host, document: doc = globalThis.document,
   url = globalThis.location?.href || '', schedule = globalThis.setInterval,
   cancel = globalThis.clearInterval } = {}) {
   if (!walkingDebugEnabled(url) || !host || !doc) return () => {};
@@ -67,7 +74,7 @@ export function attachWalkingDebug({ getSnapshot, host, document: doc = globalTh
   let lastText = '';
   const update = () => {
     if (doc.hidden) return;
-    const text = formatWalkingDebug(getSnapshot());
+    const text = formatWalkingDebug(getSnapshot(), getSafetyWalking());
     if (text !== lastText) { output.textContent = text; lastText = text; }
   };
   update();

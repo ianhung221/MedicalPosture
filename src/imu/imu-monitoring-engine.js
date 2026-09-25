@@ -1,5 +1,6 @@
 import { createReminderPolicy } from '../posture/reminder-policy.js';
 import { createWalkingSafetyPolicy } from '../posture/walking-safety-policy.js';
+import { createSafetyWalkingStabilizer } from '../posture/safety-walking-stabilizer.js';
 import { getContextSnapshot } from '../context/context-engine.js';
 import { createImuPostureClassifier } from './imu-posture-classifier.js';
 import { IMU_CONFIG } from './imu-config.js';
@@ -12,12 +13,21 @@ import { IDENTITY_CSS_MATRIX3D, quaternionToCssMatrix3d } from './imu-visual-map
 import { IMU_DIAGNOSTICS_DEBUG } from './imu-debug-config.js';
 import { updateImuRuntime } from '../state/monitoring-session.js';
 
-const initialSnapshot = () => ({ postureRuntime: null, walkingSafety: null, status: 'idle', runtimeKind: 'pending', permission: { motion: 'unknown', orientation: 'unknown' }, calibration: { active: false, completed: false, elapsedMs: 0, validSamples: 0, stable: false, baseline: null }, orientation: { pitch: 0, roll: 0, yaw: 0, yawAvailable: false, singular: false, visualMatrix: IDENTITY_CSS_MATRIX3D, visualQuaternion: { w: 1, x: 0, y: 0, z: 0 } }, sampleCadenceHz: 0, motionSampleCount: 0, orientationSampleCount: 0, error: null });
+const initialSnapshot = () => ({ postureRuntime: null, walkingSafety: null, safetyWalking: null, status: 'idle', runtimeKind: 'pending', permission: { motion: 'unknown', orientation: 'unknown' }, calibration: { active: false, completed: false, elapsedMs: 0, validSamples: 0, stable: false, baseline: null }, orientation: { pitch: 0, roll: 0, yaw: 0, yawAvailable: false, singular: false, visualMatrix: IDENTITY_CSS_MATRIX3D, visualQuaternion: { w: 1, x: 0, y: 0, z: 0 } }, sampleCadenceHz: 0, motionSampleCount: 0, orientationSampleCount: 0, error: null });
 
-export function createImuMonitoringEngine({ policy = createReminderPolicy(), safetyPolicy = createWalkingSafetyPolicy(), contextProvider = getContextSnapshot, postureClassifier = createImuPostureClassifier(), permissionRequester = requestSensorPermissions, sourceFactory = createImuSensorSource, normalizer = normalizeOrientationSample, smoother = createOrientationSmoother({ alpha: IMU_CONFIG.smoothingAlpha }), calibration = createImuCalibration(), sessionUpdater = updateImuRuntime, now = () => globalThis.performance?.now?.() ?? Date.now(), documentRef = globalThis.document, setIntervalFn = setInterval, clearIntervalFn = clearInterval } = {}) {
+export function createImuMonitoringEngine({ policy = createReminderPolicy(), safetyPolicy = createWalkingSafetyPolicy(), walkingStabilizer = createSafetyWalkingStabilizer(), contextProvider = getContextSnapshot, postureClassifier = createImuPostureClassifier(), permissionRequester = requestSensorPermissions, sourceFactory = createImuSensorSource, normalizer = normalizeOrientationSample, smoother = createOrientationSmoother({ alpha: IMU_CONFIG.smoothingAlpha }), calibration = createImuCalibration(), sessionUpdater = updateImuRuntime, now = () => globalThis.performance?.now?.() ?? Date.now(), documentRef = globalThis.document, setIntervalFn = setInterval, clearIntervalFn = clearInterval } = {}) {
   let snapshot = initialSnapshot(); let source = null; let running = false; let lastOrientationAt = null; let lastPostureAt = null; let lastSessionUpdateAt = -Infinity; let safetyWatchdogId = null; let onPrivacyPause = null; let debugRaw = null; let debugNormalized = null;
   const listeners = new Set();
   const clone = () => JSON.parse(JSON.stringify(snapshot));
+  const observeSafetyWalking = (timestamp) => {
+    const context = contextProvider();
+    const evidence = context?.activity?.walkingEvidence;
+    return walkingStabilizer.update({ timestamp,
+      valid: !documentRef?.hidden && context?.visibility === 'visible' && context.motion?.status === 'available',
+      fresh: evidence?.fresh === true, evaluatedAt: evidence?.evaluatedAt,
+      walkingCandidate: evidence?.walkingCandidate === true,
+      walkingConfirmed: evidence?.walkingConfirmed === true });
+  };
   const emit = (patch = {}) => {
     const previousStatus = snapshot.status; const previousSafetyPhase = snapshot.walkingSafety?.phase;
     snapshot = { ...snapshot, ...patch }; const value = clone();
@@ -49,32 +59,33 @@ export function createImuMonitoringEngine({ policy = createReminderPolicy(), saf
     if (!smoothed || !telemetry) return;
     const postureRuntime = policy.update(postureClassifier.update(telemetry, observationAt));
     lastPostureAt = observationAt;
-    const context = contextProvider();
-    const walkingConfirmed = context?.visibility === 'visible' && context.motion?.status === 'available'
-      && context.activity?.walkingEvidence?.fresh === true && context.activity.walkingEvidence.walkingConfirmed === true;
-    const walkingSafety = safetyPolicy.update({ walkingConfirmed, lowHead: postureRuntime.state === 'LOW_HEAD', timestamp: observationAt, valid: !documentRef?.hidden });
-    emit({ postureRuntime, walkingSafety, status: 'monitoring', runtimeKind: 'browser-sensors', calibration: calibration.getSnapshot(sensorAt), orientation: { ...telemetry, visualMatrix: quaternionToCssMatrix3d(smoothed), visualQuaternion: { ...smoothed } }, orientationSampleCount: source?.getCounts().orientationCount || 0, motionSampleCount: source?.getCounts().motionCount || 0, sampleCadenceHz: cadence, error: null });
+    const safetyWalking = observeSafetyWalking(observationAt);
+    const walkingSafety = { ...safetyPolicy.update({ walkingConfirmed: safetyWalking.active, lowHead: postureRuntime.state === 'LOW_HEAD', timestamp: observationAt, valid: !documentRef?.hidden }), walkingEvidence: safetyWalking };
+    emit({ postureRuntime, safetyWalking, walkingSafety, status: 'monitoring', runtimeKind: 'browser-sensors', calibration: calibration.getSnapshot(sensorAt), orientation: { ...telemetry, visualMatrix: quaternionToCssMatrix3d(smoothed), visualQuaternion: { ...smoothed } }, orientationSampleCount: source?.getCounts().orientationCount || 0, motionSampleCount: source?.getCounts().motionCount || 0, sampleCadenceHz: cadence, error: null });
   };
   const onMotion = () => { if (running) snapshot.motionSampleCount = source?.getCounts().motionCount || snapshot.motionSampleCount; };
   const stopSafetyWatchdog = () => { if (safetyWatchdogId !== null) clearIntervalFn(safetyWatchdogId); safetyWatchdogId = null; };
   const checkSafetyFreshness = () => {
-    if (!running || !snapshot.walkingSafety || snapshot.walkingSafety.phase === 'idle') return;
-    const context = contextProvider();
-    const walkingFresh = context?.visibility === 'visible' && context.motion?.status === 'available'
-      && context.activity?.walkingEvidence?.fresh === true && context.activity.walkingEvidence.walkingConfirmed === true;
-    if (!walkingFresh || lastPostureAt === null || now() - lastPostureAt > 1500) {
+    if (!running || !snapshot.walkingSafety) return;
+    const timestamp = now();
+    const safetyWalking = observeSafetyWalking(timestamp);
+    snapshot.safetyWalking = safetyWalking;
+    if (lastPostureAt === null || timestamp - lastPostureAt > 1500) walkingStabilizer.reset('posture-observation-stale');
+    const currentWalking = walkingStabilizer.getSnapshot();
+    if ((!currentWalking.active || lastPostureAt === null || timestamp - lastPostureAt > 1500)
+      && (snapshot.walkingSafety.phase !== 'idle' || snapshot.walkingSafety.walkingEvidence?.active)) {
       safetyPolicy.reset();
-      emit({ walkingSafety: safetyPolicy.getSnapshot() });
+      emit({ safetyWalking: currentWalking, walkingSafety: { ...safetyPolicy.getSnapshot(), walkingEvidence: currentWalking } });
     }
   };
-  const onScreenAngle = () => { if (!running) return; calibration.reset(); smoother.reset(); policy.reset(); safetyPolicy.reset(); postureClassifier.reset(); emit({ postureRuntime: null, walkingSafety: safetyPolicy.getSnapshot(), status: 'recalibration-required', calibration: calibration.getSnapshot(), error: null }); };
-  const onSourceStatus = ({ status }) => { if (status === 'timeout') { policy.pause(); safetyPolicy.reset(); emit({ status: 'error', postureRuntime: policy.getSnapshot(), walkingSafety: safetyPolicy.getSnapshot(), error: '尚未收到有效的裝置姿態資料，請確認瀏覽器與感測器支援。' }); } };
+  const onScreenAngle = () => { if (!running) return; calibration.reset(); smoother.reset(); policy.reset(); safetyPolicy.reset(); walkingStabilizer.reset(); postureClassifier.reset(); emit({ postureRuntime: null, safetyWalking: walkingStabilizer.getSnapshot(), walkingSafety: safetyPolicy.getSnapshot(), status: 'recalibration-required', calibration: calibration.getSnapshot(), error: null }); };
+  const onSourceStatus = ({ status }) => { if (status === 'timeout') { policy.pause(); safetyPolicy.reset(); walkingStabilizer.reset(); emit({ status: 'error', postureRuntime: policy.getSnapshot(), safetyWalking: walkingStabilizer.getSnapshot(), walkingSafety: safetyPolicy.getSnapshot(), error: '尚未收到有效的裝置姿態資料，請確認瀏覽器與感測器支援。' }); } };
   const handleVisibility = () => { if (documentRef?.hidden && running) { api.pause({ reason: 'hidden' }); onPrivacyPause?.('hidden'); } };
   const api = {
     configure({ privacyPause } = {}) { onPrivacyPause = privacyPause || null; },
     async start({ environment = {} } = {}) {
       if (running) return true;
-      policy.reset(); safetyPolicy.reset(); postureClassifier.reset();
+      policy.reset(); safetyPolicy.reset(); walkingStabilizer.reset(); postureClassifier.reset();
       emit({ ...initialSnapshot(), status: 'requesting-permission' });
       const permissions = await permissionRequester({ motion: true, orientation: true, environment });
       const permission = { motion: permissions.motion?.permission || 'unknown', orientation: permissions.orientation?.permission || 'unknown' };
@@ -88,9 +99,9 @@ export function createImuMonitoringEngine({ policy = createReminderPolicy(), saf
       documentRef?.addEventListener?.('visibilitychange', handleVisibility);
       emit({ status: 'waiting-samples', permission, error: null }); return true;
     },
-    pause({ reason = 'user' } = {}) { if (!running) return false; source?.stop(); running = false; stopSafetyWatchdog(); lastPostureAt = null; calibration.reset(); smoother.reset(); documentRef?.removeEventListener?.('visibilitychange', handleVisibility); policy.pause(); safetyPolicy.reset(); emit({ status: 'paused', pauseReason: reason, postureRuntime: policy.getSnapshot(), walkingSafety: safetyPolicy.getSnapshot() }); return true; },
+    pause({ reason = 'user' } = {}) { if (!running) return false; source?.stop(); running = false; stopSafetyWatchdog(); lastPostureAt = null; calibration.reset(); smoother.reset(); documentRef?.removeEventListener?.('visibilitychange', handleVisibility); policy.pause(); safetyPolicy.reset(); walkingStabilizer.reset(); emit({ status: 'paused', pauseReason: reason, postureRuntime: policy.getSnapshot(), safetyWalking: walkingStabilizer.getSnapshot(), walkingSafety: safetyPolicy.getSnapshot() }); return true; },
     async resume(options = {}) { if (running) return true; snapshot = { ...snapshot, status: 'waiting-samples', error: null }; return api.start(options); },
-    stop() { policy.reset(); safetyPolicy.reset(); postureClassifier.reset(); source?.stop(); source = null; running = false; stopSafetyWatchdog(); calibration.reset(); smoother.reset(); lastOrientationAt = null; lastPostureAt = null; lastSessionUpdateAt = -Infinity; debugRaw = null; debugNormalized = null; documentRef?.removeEventListener?.('visibilitychange', handleVisibility); snapshot = initialSnapshot(); listeners.forEach((listener) => listener(clone())); },
+    stop() { policy.reset(); safetyPolicy.reset(); walkingStabilizer.reset(); postureClassifier.reset(); source?.stop(); source = null; running = false; stopSafetyWatchdog(); calibration.reset(); smoother.reset(); lastOrientationAt = null; lastPostureAt = null; lastSessionUpdateAt = -Infinity; debugRaw = null; debugNormalized = null; documentRef?.removeEventListener?.('visibilitychange', handleVisibility); snapshot = initialSnapshot(); listeners.forEach((listener) => listener(clone())); },
     detachView() { return running; },
     attachView(listener) { if (typeof listener !== 'function') return () => {}; listeners.add(listener); listener(clone()); return () => listeners.delete(listener); },
     subscribe(listener) { listeners.add(listener); listener(clone()); return () => listeners.delete(listener); },
