@@ -207,7 +207,7 @@ function strategyCards(session) {
   const strategies = [
     ['awareness', '一般低頭', '低頭持續確認後，溫和提醒調整姿勢。', 'south'],
     ['attention', '持續坐姿異常', '長時間低頭或已確認的明顯異常，提醒調整姿勢。', 'notification_important'],
-    ['high-risk', '行走＋持續低頭', '規劃功能：結合行走與持續低頭後提高安全提醒優先度。', 'warning'],
+    ['high-risk', '行走＋持續低頭', '本機行走確認與低頭狀態持續重疊時，優先顯示安全提醒。', 'warning'],
   ];
   return `<section class="alert-showcase" aria-labelledby="strategy-title"><div class="section-title-row"><div><span class="section-kicker">系統提醒策略</span><h2 id="strategy-title">依風險自動調整提醒層級</h2></div><span class="demo-tag"><strong data-reminder-status>${view.label}</strong>・不可手動選擇</span></div><div class="alert-levels">${strategies.map(([tone, title, copy, icon]) => `<article class="alert-level alert-level--${tone} ${riskLevel === tone ? 'is-active' : ''}" data-risk-strategy="${tone}" ${riskLevel === tone ? 'aria-current="true"' : ''}><span class="material-symbols-rounded" aria-hidden="true">${icon}</span><span><strong>${title}</strong><small>${copy}</small></span></article>`).join('')}</div></section>`;
 }
@@ -249,7 +249,7 @@ function aiStatusPanel(session) {
 
 function imuStatusPanel(session) {
   const runtime = session.imuRuntime || {}; const calibration = runtime.calibration || {}; const orientation = runtime.orientation || {};
-  return `<aside class="imu-status-panel" data-imu-status-panel><div class="connection-row"><span class="icon-tile icon-tile--imu"><span class="material-symbols-rounded" aria-hidden="true">smartphone</span></span><div><small>本機感測來源</small><strong data-imu-connection>${imuRuntimeLabels[runtime.status] || '等待啟動'}</strong></div><span class="status-chip status-chip--imu" data-imu-runtime-chip>${runtime.runtimeKind === 'browser-sensors' ? '手機 Sensor' : '準備中'}</span></div><section class="imu-calibration" data-imu-calibration ${calibration.active ? '' : 'hidden'}><div><strong>中立姿態校正</strong><span data-imu-calibration-time>${(calibration.elapsedMs / 1000 || 0).toFixed(1)} / 3.0 秒</span></div><progress data-imu-calibration-progress max="3000" value="${calibration.elapsedMs || 0}"></progress><p>請將手機保持在預計使用方向並穩定約 3 秒；若晃動過大會要求重試。</p></section><div class="imu-orientation-now" data-imu-orientation-card><span class="material-symbols-rounded" aria-hidden="true">screen_rotation</span><div><small>相對姿態</small><strong data-imu-orientation-summary>${runtime.status === 'monitoring' ? reminderPresentation(session).label : '等待完成校正'}</strong><p>相對 Pitch 低頭概念驗證；手機需隨頭部方向使用。工程原型參數，非醫療判定；尚未整合穿戴裝置或行走風險。</p></div></div><dl class="imu-reading-list"><div><dt>Pitch（相對）</dt><dd data-imu-pitch>${formatAngle(orientation.pitch)}</dd></div><div><dt>Roll（相對）</dt><dd data-imu-roll>${formatAngle(orientation.roll)}</dd></div><div><dt>Yaw（相對）</dt><dd data-imu-yaw>${orientation.yawAvailable ? formatAngle(orientation.yaw) : '尚無資料'}</dd></div><div><dt>取樣頻率</dt><dd data-imu-cadence>${Number(runtime.sampleCadenceHz || 0).toFixed(1)} Hz</dd></div><div><dt>監測時間</dt><dd data-imu-monitoring-time>${formatDuration(session.activeDurationMs || 0)}</dd></div></dl><p class="imu-error" data-imu-error ${runtime.error ? '' : 'hidden'}>${runtime.error || ''}</p>${sessionControls(session)}</aside>`;
+  return `<aside class="imu-status-panel" data-imu-status-panel><div class="connection-row"><span class="icon-tile icon-tile--imu"><span class="material-symbols-rounded" aria-hidden="true">smartphone</span></span><div><small>本機感測來源</small><strong data-imu-connection>${imuRuntimeLabels[runtime.status] || '等待啟動'}</strong></div><span class="status-chip status-chip--imu" data-imu-runtime-chip>${runtime.runtimeKind === 'browser-sensors' ? '手機 Sensor' : '準備中'}</span></div><section class="imu-calibration" data-imu-calibration ${calibration.active ? '' : 'hidden'}><div><strong>中立姿態校正</strong><span data-imu-calibration-time>${(calibration.elapsedMs / 1000 || 0).toFixed(1)} / 3.0 秒</span></div><progress data-imu-calibration-progress max="3000" value="${calibration.elapsedMs || 0}"></progress><p>請將手機保持在預計使用方向並穩定約 3 秒；若晃動過大會要求重試。</p></section><div class="imu-orientation-now" data-imu-orientation-card><span class="material-symbols-rounded" aria-hidden="true">screen_rotation</span><div><small>相對姿態</small><strong data-imu-orientation-summary>${runtime.status === 'monitoring' ? reminderPresentation(session).label : '等待完成校正'}</strong><p>相對 Pitch 低頭與行走安全的手機本機概念驗證；手機需隨頭部方向使用，非醫療判定，尚未整合穿戴裝置。</p></div></div><div class="imu-walking-safety" data-imu-safety-status data-phase="idle"><small>行走安全・本機概念驗證</small><strong data-imu-safety-title>行走尚未確認</strong><p data-imu-safety-copy>確認行走後，系統才會結合目前低頭狀態評估安全提醒。</p></div><dl class="imu-reading-list"><div><dt>Pitch（相對）</dt><dd data-imu-pitch>${formatAngle(orientation.pitch)}</dd></div><div><dt>Roll（相對）</dt><dd data-imu-roll>${formatAngle(orientation.roll)}</dd></div><div><dt>Yaw（相對）</dt><dd data-imu-yaw>${orientation.yawAvailable ? formatAngle(orientation.yaw) : '尚無資料'}</dd></div><div><dt>取樣頻率</dt><dd data-imu-cadence>${Number(runtime.sampleCadenceHz || 0).toFixed(1)} Hz</dd></div><div><dt>監測時間</dt><dd data-imu-monitoring-time>${formatDuration(session.activeDurationMs || 0)}</dd></div></dl><p class="imu-error" data-imu-error ${runtime.error ? '' : 'hidden'}>${runtime.error || ''}</p>${sessionControls(session)}</aside>`;
 }
 
 function pendingSuggestion(session) {
@@ -288,7 +288,7 @@ function overviewView(contextSnapshot, manualOpen, setupOpen) {
       ${setupOpen ? `<section class="context-permission-panel" aria-label="智慧模式初始化"><div class="context-permission-panel__intro"><span class="material-symbols-rounded">privacy_tip</span><div><strong>由你決定授權時機</strong><p>動作資料只在本機記憶體用於活動分類；攝影機只確認能力並立即關閉影像串流。不會請求 GPS 或 Bluetooth。</p></div></div><div class="context-permission-actions"><button class="button button--secondary" type="button" data-action="request-motion" ${view.isProbing || contextSnapshot.motion.status === 'available' ? 'disabled' : ''}><span class="material-symbols-rounded">screen_rotation</span><span data-context-motion-action-label>${contextSnapshot.motion.status === 'available' ? '動作感測已可用' : '啟用動作感測'}</span></button><button class="button button--secondary" type="button" data-action="request-camera" ${view.isProbing || contextSnapshot.camera.status === 'available' ? 'disabled' : ''}><span class="material-symbols-rounded">videocam</span><span data-context-camera-action-label>${contextSnapshot.camera.status === 'available' ? '攝影機已確認' : '檢查攝影機'}</span></button><button class="text-button" type="button" data-action="refresh-context"><span class="material-symbols-rounded">refresh</span>重新檢查</button></div><div data-context-candidate-region>${candidateMarkup(view)}</div></section>` : ''}
     </section>
     <section class="manual-mode-section" aria-labelledby="manual-mode-title"><div class="section-title-row"><div><span class="section-kicker">使用者保有選擇權</span><h2 id="manual-mode-title">手動模式</h2></div><button class="text-button" type="button" data-action="toggle-manual" aria-expanded="${manualOpen}">${manualOpen ? '收合' : '展開 AI／IMU 選項'}</button></div><div class="manual-mode-grid" ${manualOpen ? '' : 'hidden'}><article class="detection-method detection-method--ai"><span class="mode-state mode-state--complete">Python 原型已完成・Web 整合測試版</span><span class="icon-tile icon-tile--ai"><span class="material-symbols-rounded">videocam</span></span><span class="section-kicker">MediaPipe Pose</span><h3>AI 坐姿辨識</h3><p>適合有可用攝影機的固定環境。啟動後由 MediaPipe Web 在裝置本機辨識，不上傳影像。</p><button class="button button--ai" type="button" data-action="start-ai">開始 AI 坐姿辨識</button></article><article class="detection-method detection-method--imu"><span class="mode-state mode-state--planned">Phase 3A・手機概念驗證</span><span class="icon-tile icon-tile--imu"><span class="material-symbols-rounded">sensors</span></span><span class="section-kicker">相對姿態感測</span><h3>IMU 姿態感測</h3><p>使用手機內建方向感測器驗證相對 Pitch／Roll／Yaw；耳機、帽夾等頭部穿戴整合仍屬未來規劃。</p><button class="button button--imu" type="button" data-action="start-imu">開始手機 IMU 驗證</button></article></div></section>
-    <section class="walking-safety card"><div class="walking-safety__copy"><span class="mode-state mode-state--planned">未來功能</span><h2>行走安全</h2><p>未來可利用 IMU 判斷行走狀態與頭部姿態，於高風險的行走低頭情境提供安全提醒。</p></div><div class="safety-flow"><div><span class="material-symbols-rounded">directions_walk</span><strong>行走狀態</strong></div><span class="material-symbols-rounded safety-flow__arrow">arrow_forward</span><div><span class="material-symbols-rounded">phone_android</span><strong>持續低頭</strong></div><span class="material-symbols-rounded safety-flow__arrow">arrow_forward</span><div><span class="material-symbols-rounded">notification_important</span><strong>安全提醒</strong></div></div></section>
+    <section class="walking-safety card"><div class="walking-safety__copy"><span class="mode-state mode-state--planned">手機本機概念驗證</span><h2>行走安全</h2><p>結合本機行走確認與手機相對低頭狀態，持續符合條件後提供畫面內安全提醒；不代表已完成頭部穿戴裝置或可防止事故。</p></div><div class="safety-flow"><div><span class="material-symbols-rounded">directions_walk</span><strong>行走狀態</strong></div><span class="material-symbols-rounded safety-flow__arrow">arrow_forward</span><div><span class="material-symbols-rounded">phone_android</span><strong>持續低頭</strong></div><span class="material-symbols-rounded safety-flow__arrow">arrow_forward</span><div><span class="material-symbols-rounded">notification_important</span><strong>安全提醒</strong></div></div></section>
   </div>`;
 }
 
@@ -330,6 +330,20 @@ export function updateAssessmentImuUi(container, session) {
   updateReminderUi(container, session);
   if (!container.querySelector('[data-imu-status-panel]')) return false;
   const runtime = session.imuRuntime || {}; const calibration = runtime.calibration || {}; const orientation = runtime.orientation || {};
+  const safety = session.walkingSafety;
+  const safetyPanel = container.querySelector('[data-imu-safety-status]');
+  if (safetyPanel) safetyPanel.dataset.phase = session.status === 'paused' ? 'idle' : safety?.phase || 'idle';
+  const safetyTitle = session.status === 'paused' ? '監測已暫停' : !safety?.walkingConfirmed ? '行走尚未確認'
+    : safety.phase === 'escalated' ? '行走中持續低頭，請立即注意前方'
+      : safety.phase === 'high-risk' ? '行走中低頭，請注意前方'
+        : safety.lowHead ? '行走低頭觀察中' : '行走已確認・目前安全';
+  const safetyCopy = session.status === 'paused' ? '安全計時已重設，繼續監測後重新觀察。'
+    : !safety?.walkingConfirmed ? '確認行走後，系統才會結合目前低頭狀態評估安全提醒。'
+      : safety.phase === 'escalated' ? safety.lastReminderKind === 'repeat' ? '持續符合行走低頭條件，已再次提醒注意前方。' : '持續符合行走低頭條件，請抬頭留意周遭。'
+        : safety.phase === 'high-risk' ? '已持續超過 3 秒，請抬頭留意前方環境。'
+          : safety.lowHead ? '正在確認行走與低頭是否持續，不會立即警示。' : '目前未同時出現低頭狀態。';
+  setText(container, '[data-imu-safety-title]', safetyTitle);
+  setText(container, '[data-imu-safety-copy]', safetyCopy);
   const live = runtime.runtimeKind === 'browser-sensors'; const paused = session.status === 'paused';
   const presentationQuaternion = toUserFacingModelQuaternion(orientation.visualQuaternion);
   if (session.status === 'monitoring' && runtime.status === 'monitoring' && presentationQuaternion) {
@@ -472,6 +486,10 @@ export function renderAssessmentPage(container) {
     const started = imuMonitoringEngine.isRunning()
       ? true
       : await imuMonitoringEngine.start();
+    if (started && getContextSnapshot().motion.status !== 'available') {
+      await initializeContextEngine();
+      void requestMotionContext();
+    }
     if (!started && currentSession?.status === 'monitoring') pauseMonitoring();
     showDemoToast(started ? '手機姿態感測已啟動，請保持穩定約 3 秒完成校正' : 'IMU 概念驗證未完成，請查看畫面提示後重試');
     return started;
@@ -523,7 +541,7 @@ export function renderAssessmentPage(container) {
       startSmartSession({ ...currentContext.recommendation, decision: mode, confidence: 'medium', source: 'manual-override', shouldAutoApply: false, reason: `使用者確認採用候選的 ${recommendationLabels[mode]} Demo 流程。` });
     }
     if (action === 'start-ai') { stopContextEngine(); startMonitoring({ mode: 'ai', context: 'fixed-indoor' }); void startLiveAi(); }
-    if (action === 'start-imu') { stopContextEngine(); startMonitoring({ mode: 'imu', context: 'commute-walking' }); void startLiveImu(); }
+    if (action === 'start-imu') { startMonitoring({ mode: 'imu', context: 'commute-walking' }); void startLiveImu(); }
     if (action === 'start-live-ai') await startLiveAi();
     if (action === 'start-live-imu') await startLiveImu();
     if (action === 'toggle-pause') {

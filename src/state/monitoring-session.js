@@ -1,6 +1,7 @@
 import { reminderPresentationLevel } from '../posture/reminder-presentation.js';
 
 const clonePosture = (value) => value ? { ...value, metadata: { ...value.metadata }, counts: { ...value.counts }, transition: value.transition ? { ...value.transition } : null, lastTransition: value.lastTransition ? { ...value.lastTransition } : null } : null;
+const cloneSafety = (value) => value ? { ...value } : null;
 const posturePatch = (patch, source) => {
   if (!Object.hasOwn(patch || {}, 'postureRuntime')) return {};
   const value = patch.postureRuntime;
@@ -89,6 +90,7 @@ const initialState = () => ({
   pendingRecommendation: null,
   ignoredRecommendationKey: null,
   postureRuntime: null,
+  walkingSafety: null,
   aiRuntime: null,
   imuRuntime: null,
   lastSummary: null,
@@ -104,6 +106,7 @@ function snapshot(at = Date.now()) {
   return {
     ...state,
     postureRuntime: clonePosture(state.postureRuntime),
+    walkingSafety: cloneSafety(state.walkingSafety),
     activeDurationMs: accumulatedActiveDuration(at),
     contextDetails: state.contextDetails ? { ...state.contextDetails } : null,
     recommendation: state.recommendation ? { ...state.recommendation, requirements: [...(state.recommendation.requirements || [])] } : null,
@@ -189,6 +192,7 @@ export function startMonitoring({ mode, context = 'fixed-indoor', recommendation
     pendingRecommendation: null,
     ignoredRecommendationKey: null,
     postureRuntime: null,
+    walkingSafety: null,
     aiRuntime: activeMethod === 'ai' ? initialAiRuntime() : null,
     imuRuntime: activeMethod === 'imu' ? initialImuRuntime() : null,
     lastSummary: null,
@@ -243,6 +247,7 @@ export function applyPendingMonitoringRecommendation(at = Date.now()) {
     pendingRecommendation: null,
     ignoredRecommendationKey: null,
     postureRuntime: null,
+    walkingSafety: null,
     aiRuntime: decision === 'ai' ? initialAiRuntime() : null,
     imuRuntime: decision === 'imu' ? initialImuRuntime() : null,
   };
@@ -258,7 +263,7 @@ export function dismissPendingMonitoringRecommendation() {
 
 export function pauseMonitoring(at = Date.now()) {
   if (state.status !== 'monitoring') return snapshot();
-  state = { ...state, postureRuntime: state.postureRuntime ? { ...state.postureRuntime, suspended: true, transition: null } : null, status: 'paused', activeDurationMs: accumulatedActiveDuration(at), activeSince: null, aiRuntime: state.aiRuntime ? { ...state.aiRuntime, status: 'paused' } : null, imuRuntime: state.imuRuntime ? { ...state.imuRuntime, status: 'paused' } : null };
+  state = { ...state, postureRuntime: state.postureRuntime ? { ...state.postureRuntime, suspended: true, transition: null } : null, walkingSafety: null, riskLevel: 'normal', status: 'paused', activeDurationMs: accumulatedActiveDuration(at), activeSince: null, aiRuntime: state.aiRuntime ? { ...state.aiRuntime, status: 'paused' } : null, imuRuntime: state.imuRuntime ? { ...state.imuRuntime, status: 'paused' } : null };
   return emit();
 }
 
@@ -294,6 +299,9 @@ export function updateImuRuntime(patch) {
   state = {
     ...state,
     ...posturePatch(next, 'imu'),
+    walkingSafety: Object.hasOwn(next || {}, 'walkingSafety') ? cloneSafety(next.walkingSafety) : state.walkingSafety,
+    riskLevel: next?.walkingSafety?.active && state.status === 'monitoring' ? 'high-risk'
+      : Object.hasOwn(next || {}, 'postureRuntime') ? reminderPresentationLevel(next.postureRuntime?.suspended ? null : next.postureRuntime?.level) : state.riskLevel,
     imuRuntime: {
       ...state.imuRuntime, ...sanitized,
       permission: { ...state.imuRuntime.permission, ...(sanitized.permission || {}) },
@@ -331,7 +339,7 @@ export function endMonitoring(at = Date.now()) {
     modelVariant: completed.aiRuntime?.modelVariant || null,
     goodPosture: hasRealAi ? `${goodPercent}%` : completed.activeMethod === 'ai' ? '尚無真實資料' : '—',
     lookingDown: posture ? `${posture.counts.LOW_HEAD} 次` : hasRealAi ? `${completed.aiRuntime.counts.LOW_HEAD} 次` : completed.activeMethod === 'ai' ? '尚無真實資料' : '—',
-    walkingDown: completed.activeMethod === 'imu' ? '尚未分類' : '0 次',
+    walkingDown: completed.activeMethod === 'imu' ? '尚未納入摘要統計' : '0 次',
     postureEpisodeCount: posture?.episodeCount ?? null,
     reminderTransitionCount: posture?.transitionCount ?? null,
     reminders: posture ? `${posture.outputCount} 次` : hasRealAi ? `${completed.aiRuntime.reminders} 次` : '—',

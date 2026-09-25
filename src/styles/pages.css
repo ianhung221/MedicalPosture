@@ -722,6 +722,14 @@
 .integration-note .material-symbols-rounded { color: var(--ai); }
 .walking-safety { border-left: 3px solid var(--red); background: #fff; }
 .walking-safety .mode-state--planned { color: var(--red-dark); background: var(--red-soft); }
+.imu-walking-safety { margin: .8rem 0; padding: .85rem 1rem; border: 1px solid var(--green-border); border-radius: 12px; background: var(--green-soft); }
+.imu-walking-safety small { display: block; color: var(--muted); font-size: .7rem; font-weight: 700; }
+.imu-walking-safety strong { display: block; margin-top: .2rem; color: var(--green-dark); font-size: .93rem; }
+.imu-walking-safety p { margin: .25rem 0 0; font-size: .72rem; line-height: 1.5; }
+.imu-walking-safety[data-phase="accumulating"] { border-color: var(--yellow-border); background: var(--yellow-soft); }
+.imu-walking-safety[data-phase="accumulating"] strong { color: var(--yellow-dark); }
+.imu-walking-safety[data-phase="high-risk"], .imu-walking-safety[data-phase="escalated"] { border-color: var(--red-border); background: var(--red-soft); }
+.imu-walking-safety[data-phase="high-risk"] strong, .imu-walking-safety[data-phase="escalated"] strong { color: var(--red-dark); }
 .safety-flow > div > .material-symbols-rounded { color: var(--red-dark); background: var(--red-soft); }
 
 /* Detection active states */

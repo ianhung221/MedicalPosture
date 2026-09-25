@@ -17,6 +17,7 @@ import {
 import { aiMonitoringEngine } from '../ai/ai-monitoring-engine.js';
 import { DEFAULT_MODEL_VARIANT } from '../ai/mediapipe-config.js';
 import { imuMonitoringEngine } from '../imu/imu-monitoring-engine.js';
+import { reminderPresentation } from '../posture/reminder-presentation.js';
 
 const modeLabels = { smart: '智慧模式', ai: 'AI 坐姿辨識', imu: 'IMU 姿態感測' };
 const methodLabels = { ai: 'AI', imu: 'IMU', none: '不監測' };
@@ -123,7 +124,7 @@ export function mountMonitoringControls(app) {
     chrome.querySelector('[data-panel-mode]').textContent = modeLabels[session.mode] || '示範模式';
     chrome.querySelector('[data-panel-context]').textContent = context.label;
     chrome.querySelector('[data-panel-method]').textContent = context.recommendation;
-    chrome.querySelector('[data-panel-risk]').textContent = paused ? '已暫停' : riskLabels[session.riskLevel];
+    chrome.querySelector('[data-panel-risk]').textContent = paused ? '已暫停' : session.walkingSafety?.active ? reminderPresentation(session).label : riskLabels[session.riskLevel];
     chrome.querySelector('[data-monitoring-truth-copy]').textContent = session.activeMethod === 'ai'
       ? session.aiRuntime?.runtimeKind === 'mediapipe-web' ? 'MediaPipe Web 在本機即時辨識；影像不保存、不上傳。' : 'Web AI 尚待使用者啟動；Python 桌面原型已完成。'
       : session.activeMethod === 'imu' ? realImu ? '手機內建方向感測器正在本機運作；穿戴式 IMU 尚未完成。' : '手機 IMU 概念驗證尚待啟動；穿戴式裝置仍為規劃功能。' : '目前為合理暫停狀態，沒有執行姿勢感測。';

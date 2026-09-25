@@ -17,6 +17,10 @@ export function reminderPresentationLevel(level) {
 export function reminderPresentation(session) {
   const posture = session.postureRuntime;
   if (session.status === 'paused' || posture?.suspended) return { label: '監測已暫停', activeStrategy: null };
+  if (session.walkingSafety?.active) return {
+    label: session.walkingSafety.phase === 'escalated' ? '行走中持續低頭，請立即注意前方' : '行走中低頭，請注意前方',
+    activeStrategy: 'high-risk',
+  };
   if (!posture || ['UNKNOWN', 'CALIBRATING'].includes(posture.state)) return { label: '等待有效姿勢資料', activeStrategy: null };
   if (posture.level === 'general-low-head') return { label: '一般低頭', activeStrategy: 'awareness' };
   if (posture.level === 'persistent-posture-abnormality') return { label: '持續坐姿異常', activeStrategy: 'attention' };
