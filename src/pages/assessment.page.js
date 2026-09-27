@@ -174,7 +174,7 @@ function renderLegacyAssessmentPage(container) {
   const alertShowcase = () => {
     const alerts = [
       ['normal', '一般低頭', '短暫姿勢變化，先持續觀察。', 'south'],
-      ['warning', '持續坐姿異常', '持續時間達提醒條件，溫和提示調整。', 'notification_important'],
+      ['warning', '姿勢警示', '持續時間達提醒條件，溫和提示調整。', 'notification_important'],
       ['danger', '行走＋持續低頭', '高風險情境，提醒注意前方環境。', 'warning'],
     ];
 
@@ -217,7 +217,7 @@ function renderLegacyAssessmentPage(container) {
           <aside class="live-status-panel">
             <div class="connection-row"><span class="icon-tile icon-tile--ai"><span class="material-symbols-rounded" aria-hidden="true">videocam</span></span><div><small>攝影機連線狀態</small><strong>Mock 畫面來源</strong></div><span class="status-chip status-chip--ai">示範中</span></div>
             <div class="posture-now posture-now--healthy"><span class="material-symbols-rounded" aria-hidden="true">accessibility_new</span><div><small>目前姿勢</small><strong>良好姿勢</strong><p>固定示意狀態</p></div></div>
-            <dl class="live-facts"><div><dt>持續時間</dt><dd>00:18</dd></div><div><dt>良好姿勢</dt><dd>82%</dd></div><div><dt>低頭事件</dt><dd>3 次</dd></div><div><dt>手撐頭</dt><dd>1 次</dd></div></dl>
+            <dl class="live-facts"><div><dt>持續時間</dt><dd>00:18</dd></div><div><dt>良好姿勢</dt><dd>82%</dd></div><div><dt>低頭事件</dt><dd>3 次</dd></div><div><dt>手靠近臉</dt><dd>1 次</dd></div></dl>
             ${sessionControls()}
           </aside>
         </section>
@@ -369,7 +369,7 @@ function renderLegacyAssessmentPage(container) {
       });
       const messages = {
         normal: '示範狀態：短暫低頭，系統持續觀察而不立即警告。',
-        warning: '示範狀態：持續坐姿異常，顯示溫和提醒。',
+        warning: '示範狀態：姿勢警示，顯示溫和提醒。',
         danger: '示範狀態：行走中持續低頭，安全提醒優先度提高。',
       };
       showDemoToast(messages[state.alert]);

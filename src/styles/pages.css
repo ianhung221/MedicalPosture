@@ -1251,6 +1251,10 @@
 .imu-calibration p { margin: 0; color: var(--ink-soft); font-size: .59rem; line-height: 1.5; }
 .imu-orientation-now { display: flex; align-items: center; gap: .75rem; margin: 1rem 0; padding: .8rem; border: 1px solid var(--imu-border); border-radius: 12px; color: var(--imu-dark); background: var(--imu-soft); }
 .imu-orientation-now > .material-symbols-rounded { font-size: 1.8rem; }
+.imu-orientation-now[data-tone="normal"] { color: var(--green-dark); border-color: var(--green-border); background: var(--green-soft); }
+.imu-orientation-now[data-tone="awareness"] { color: var(--yellow-dark); border-color: var(--yellow-border); background: var(--yellow-soft); }
+.imu-orientation-now[data-tone="attention"] { color: var(--orange-dark); border-color: var(--orange-border); background: var(--orange-soft); }
+.imu-orientation-now[data-tone="neutral"] { color: var(--ink-soft); border-color: var(--border); background: var(--surface-subtle); }
 .imu-orientation-now > div { display: grid; }
 .imu-orientation-now small { font-size: .62rem; }
 .imu-orientation-now strong { font-size: .88rem; }

@@ -68,7 +68,7 @@ export function renderStatisticsPage(container) {
         ${metricCard('姿勢分數', `${data.score} 分`, 'monitoring', 'brand')}
         ${metricCard('良好姿勢', data.good, 'favorite', 'healthy')}
         ${metricCard('低頭時間', data.lowHead, 'south', 'warning')}
-        ${metricCard('手撐頭', data.supportHead, 'front_hand', 'warning')}
+        ${metricCard('手靠近臉', data.supportHead, 'front_hand', 'warning')}
         ${metricCard('趴伏／下沉', data.slump, 'airline_seat_flat', 'danger')}
       </section>
 

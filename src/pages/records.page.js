@@ -4,7 +4,7 @@ export function renderRecordsPage(container) {
   const records = [
     { date: '8 月 11 日', time: '19:42', mode: 'AI', context: '使用電腦', event: '持續低頭', duration: '18 秒', reminded: '是', category: 'ai', tone: 'warning' },
     { date: '8 月 11 日', time: '17:36', mode: 'IMU', context: '通勤／行走', event: '行走中持續低頭', duration: '12 秒', reminded: '是', category: 'safety', tone: 'danger' },
-    { date: '8 月 11 日', time: '15:18', mode: 'AI', context: '閱讀', event: '手撐頭', duration: '9 秒', reminded: '否', category: 'ai', tone: 'neutral' },
+    { date: '8 月 11 日', time: '15:18', mode: 'AI', context: '閱讀', event: '手靠近臉', duration: '9 秒', reminded: '否', category: 'ai', tone: 'neutral' },
     { date: '8 月 10 日', time: '20:06', mode: 'AI', context: '使用電腦', event: '趴伏／上身下沉', duration: '21 秒', reminded: '是', category: 'ai', tone: 'warning' },
     { date: '8 月 10 日', time: '17:28', mode: 'IMU', context: '車站移動', event: '短暫低頭', duration: '5 秒', reminded: '否', category: 'safety', tone: 'neutral' },
     { date: '8 月 9 日', time: '14:32', mode: 'IMU', context: '家中休閒', event: '頭部前傾', duration: '16 秒', reminded: '是', category: 'imu', tone: 'warning' },
