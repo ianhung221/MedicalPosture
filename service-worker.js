@@ -1,4 +1,4 @@
-const CACHE_NAME = 'posture-health-shell-v39';
+const CACHE_NAME = 'posture-health-shell-v40';
 const CACHE_PREFIX = 'posture-health-shell-';
 const AI_CACHE_NAME = 'posture-ai-assets-v1';
 const AI_CACHE_PREFIX = 'posture-ai-assets-';
@@ -10,7 +10,7 @@ const APP_SHELL = [
   './src/components/app-shell.js', './src/components/header.js', './src/components/bottom-nav.js', './src/components/info-card.js', './src/components/monitoring-controls.js',
   './src/config/features.js', './src/config/firebase.config.example.js',
   './src/services/firebase.service.js', './src/services/imu.service.js', './src/services/pose.service.js', './src/utils/dom.js',
-  './src/state/monitoring-session.js', './src/state/platform-settings.js',
+  './src/state/monitoring-session.js', './src/state/completed-session-history.js', './src/state/platform-settings.js',
   './src/utils/assessment-navigation.js',
   './src/posture/posture-episode-tracker.js', './src/posture/reminder-policy.js', './src/posture/reminder-presentation.js', './src/posture/walking-safety-policy.js', './src/posture/safety-walking-stabilizer.js', './src/imu/imu-posture-classifier.js',
   './src/context/capability-detector.js', './src/context/motion-sampler.js', './src/context/activity-detector.js', './src/context/smart-mode-rules.js', './src/context/context-engine.js',

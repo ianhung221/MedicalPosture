@@ -1,4 +1,10 @@
 import { reminderPresentationLevel } from '../posture/reminder-presentation.js';
+import { COMPLETED_SESSION_SCHEMA_VERSION, completedSessionHistory } from './completed-session-history.js';
+
+const OBSERVED_POSTURES = new Set(['GOOD', 'LOW_HEAD', 'HAND_ON_FACE', 'SLUMPING', 'LEFT_SEAT']);
+let localSessionId = 0;
+const createSessionId = (at) => globalThis.crypto?.randomUUID?.()
+  || `${at.toString(36)}-${(++localSessionId).toString(36)}-${Math.random().toString(36).slice(2)}`;
 
 const clonePosture = (value) => value ? { ...value, metadata: { ...value.metadata }, counts: { ...value.counts }, transition: value.transition ? { ...value.transition } : null, lastTransition: value.lastTransition ? { ...value.lastTransition } : null } : null;
 const cloneSafety = (value) => value ? { ...value, walkingEvidence: value.walkingEvidence ? { ...value.walkingEvidence } : null } : null;
@@ -82,6 +88,7 @@ const initialState = () => ({
   riskLevel: 'normal',
   context: 'fixed-indoor',
   activeMethod: 'none',
+  methodsUsed: [],
   startedAt: null,
   activeDurationMs: 0,
   activeSince: null,
@@ -94,6 +101,7 @@ const initialState = () => ({
   aiRuntime: null,
   imuRuntime: null,
   lastSummary: null,
+  lastSaveStatus: null,
 });
 
 let state = initialState();
@@ -105,6 +113,7 @@ function accumulatedActiveDuration(at = Date.now()) {
 function snapshot(at = Date.now()) {
   return {
     ...state,
+    methodsUsed: [...state.methodsUsed],
     postureRuntime: clonePosture(state.postureRuntime),
     walkingSafety: cloneSafety(state.walkingSafety),
     activeDurationMs: accumulatedActiveDuration(at),
@@ -123,7 +132,7 @@ function snapshot(at = Date.now()) {
       calibration: { ...state.imuRuntime.calibration, baseline: state.imuRuntime.calibration?.baseline ? { ...state.imuRuntime.calibration.baseline } : null, quality: state.imuRuntime.calibration?.quality ? { ...state.imuRuntime.calibration.quality } : null },
       orientation: { ...state.imuRuntime.orientation },
     } : null,
-    lastSummary: state.lastSummary ? { ...state.lastSummary, contextDetails: state.lastSummary.contextDetails ? { ...state.lastSummary.contextDetails } : null } : null,
+    lastSummary: state.lastSummary ? { ...state.lastSummary, methodsUsed: [...state.lastSummary.methodsUsed] } : null,
   };
 }
 
@@ -184,6 +193,7 @@ export function startMonitoring({ mode, context = 'fixed-indoor', recommendation
     riskLevel,
     context,
     activeMethod,
+    methodsUsed: [],
     startedAt: at,
     activeDurationMs: 0,
     activeSince: status === 'monitoring' ? at : null,
@@ -196,6 +206,7 @@ export function startMonitoring({ mode, context = 'fixed-indoor', recommendation
     aiRuntime: activeMethod === 'ai' ? initialAiRuntime() : null,
     imuRuntime: activeMethod === 'imu' ? initialImuRuntime() : null,
     lastSummary: null,
+    lastSaveStatus: null,
   };
   return emit();
 }
@@ -277,9 +288,14 @@ export function updateAiRuntime(patch) {
   if (state.status === 'idle' || state.activeMethod !== 'ai' || !state.aiRuntime) return snapshot();
   const next = typeof patch === 'function' ? patch(snapshot().aiRuntime) : patch;
   const { postureRuntime: _posture, ...runtimePatch } = next || {};
+  const calibrationCompleted = next?.calibration?.completed === true || state.aiRuntime.calibration.completed === true;
+  const observed = next?.runtimeKind === 'mediapipe-web' && calibrationCompleted
+    && OBSERVED_POSTURES.has(next?.postureRuntime?.state)
+    && next.postureRuntime.source === 'ai';
   state = {
     ...state,
     ...posturePatch(next, 'ai'),
+    methodsUsed: observed && !state.methodsUsed.includes('ai') ? [...state.methodsUsed, 'ai'] : state.methodsUsed,
     aiRuntime: {
       ...state.aiRuntime, ...runtimePatch,
       calibration: { ...state.aiRuntime.calibration, ...(next?.calibration || {}) },
@@ -296,9 +312,14 @@ export function updateImuRuntime(patch) {
   const next = typeof patch === 'function' ? patch(snapshot().imuRuntime) : patch;
   const allowed = ['status', 'runtimeKind', 'error', 'permission', 'calibration', 'orientation', 'sampleCadenceHz', 'orientationSampleCount', 'motionSampleCount', 'pauseReason'];
   const sanitized = Object.fromEntries(Object.entries(next || {}).filter(([key]) => allowed.includes(key)));
+  const calibrationCompleted = next?.calibration?.completed === true || state.imuRuntime.calibration.completed === true;
+  const observed = next?.runtimeKind === 'browser-sensors' && next?.status === 'monitoring' && calibrationCompleted
+    && OBSERVED_POSTURES.has(next?.postureRuntime?.state)
+    && next.postureRuntime.source === 'imu';
   state = {
     ...state,
     ...posturePatch(next, 'imu'),
+    methodsUsed: observed && !state.methodsUsed.includes('imu') ? [...state.methodsUsed, 'imu'] : state.methodsUsed,
     walkingSafety: Object.hasOwn(next || {}, 'walkingSafety') ? cloneSafety(next.walkingSafety) : state.walkingSafety,
     riskLevel: next?.walkingSafety?.active && state.status === 'monitoring' ? 'high-risk'
       : Object.hasOwn(next || {}, 'postureRuntime') ? reminderPresentationLevel(next.postureRuntime?.suspended ? null : next.postureRuntime?.level) : state.riskLevel,
@@ -320,41 +341,31 @@ export function setMonitoringRisk(riskLevel) {
   return emit();
 }
 
-export function endMonitoring(at = Date.now()) {
+export function endMonitoring(at = Date.now(), { history = completedSessionHistory } = {}) {
   if (state.status === 'idle') return snapshot();
   const completed = { ...state };
-  const durationMs = accumulatedActiveDuration(at);
-  const durationMinutes = Math.max(1, Math.round(durationMs / 60000));
-  const hasRealAi = completed.activeMethod === 'ai' && completed.aiRuntime?.runtimeKind === 'mediapipe-web';
-  const hasRealImu = completed.activeMethod === 'imu' && completed.imuRuntime?.runtimeKind === 'browser-sensors';
-  const posture = completed.postureRuntime;
-  const goodPercent = hasRealAi && completed.aiRuntime.observedDurationMs > 0 ? Math.min(100, Math.round(completed.aiRuntime.goodDurationMs / completed.aiRuntime.observedDurationMs * 100)) : 0;
-  const lastSummary = {
-    mode: completed.mode,
-    activeMethod: completed.activeMethod,
-    context: completed.context,
-    contextDetails: completed.contextDetails,
-    duration: durationMs < 60000 ? `${Math.max(1, Math.round(durationMs / 1000))} 秒` : `${durationMinutes} 分鐘`,
-    runtimeKind: completed.aiRuntime?.runtimeKind || completed.imuRuntime?.runtimeKind || 'mock',
-    modelVariant: completed.aiRuntime?.modelVariant || null,
-    goodPosture: hasRealAi ? `${goodPercent}%` : completed.activeMethod === 'ai' ? '尚無真實資料' : '—',
-    lookingDown: posture ? `${posture.counts.LOW_HEAD} 次` : hasRealAi ? `${completed.aiRuntime.counts.LOW_HEAD} 次` : completed.activeMethod === 'ai' ? '尚無真實資料' : '—',
-    walkingDown: completed.activeMethod === 'imu' ? '尚未納入摘要統計' : '0 次',
-    postureEpisodeCount: posture?.episodeCount ?? null,
-    reminderTransitionCount: posture?.transitionCount ?? null,
-    reminders: posture ? `${posture.outputCount} 次` : hasRealAi ? `${completed.aiRuntime.reminders} 次` : '—',
-    insight: completed.activeMethod === 'imu'
-      ? hasRealImu ? '本次以手機相對 Pitch 進行低頭概念驗證；提醒為工程原型參數，不作醫療診斷。已提供本機行走低頭安全提醒，行走安全事件尚未納入本次摘要統計；穿戴裝置仍未整合。' : '本次尚未建立真實手機姿態資料；穿戴式 IMU 仍為未來整合方向。'
-      : completed.activeMethod === 'ai'
-        ? hasRealAi ? '本次摘要由 MediaPipe Web 本機辨識產生，僅供姿勢健康提醒，不作醫療診斷。' : '本次尚未建立真實 AI 偵測資料。'
-        : '本次情境維持不監測，符合以學習優先且不過度干擾的設計原則。',
-  };
-
-  state = { ...initialState(), context: completed.context, contextDetails: completed.contextDetails, lastSummary };
+  const durationMs = Math.round(accumulatedActiveDuration(at));
+  const lastSummary = completed.methodsUsed.length && Number.isSafeInteger(completed.startedAt)
+    && Number.isSafeInteger(at) && at >= completed.startedAt
+    && Number.isSafeInteger(durationMs) && durationMs >= 0 && durationMs <= at - completed.startedAt
+    ? {
+      schemaVersion: COMPLETED_SESSION_SCHEMA_VERSION,
+      id: createSessionId(at), startedAt: completed.startedAt, endedAt: at,
+      activeDurationMs: durationMs, selectedMode: completed.mode,
+      methodsUsed: [...completed.methodsUsed],
+      finalMethod: ['ai', 'imu'].includes(completed.activeMethod) ? completed.activeMethod : null,
+    }
+    : null;
+  let lastSaveStatus = 'not-recorded';
+  if (lastSummary) {
+    try { lastSaveStatus = history.append(lastSummary)?.ok ? 'saved' : 'failed'; }
+    catch { lastSaveStatus = 'failed'; }
+  }
+  state = { ...initialState(), context: completed.context, contextDetails: completed.contextDetails, lastSummary, lastSaveStatus };
   return emit();
 }
 
 export function dismissMonitoringSummary() {
-  state = { ...state, lastSummary: null };
+  state = { ...state, lastSummary: null, lastSaveStatus: null };
   return emit();
 }

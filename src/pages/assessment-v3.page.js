@@ -270,12 +270,15 @@ function activeView(session) {
   return `<div class="page-stage live-detection-page">${activeHeader(session)}${session.mode === 'smart' ? decisionFlow(session) : ''}<div data-pending-region>${pendingSuggestion(session)}</div><div class="truth-note truth-note--${session.activeMethod}"><span class="material-symbols-rounded" aria-hidden="true">${session.activeMethod === 'ai' ? 'verified' : 'science'}</span><p data-ai-truth>${truth}</p></div><section id="active-monitoring-details" tabindex="-1" aria-label="目前監測詳情" class="live-layout live-layout--media">${mediaPanel(session.activeMethod, session.status === 'paused', session)}${session.activeMethod === 'ai' ? aiStatusPanel(session) : imuStatusPanel(session)}</section>${strategyCards(session)}</div>`;
 }
 
-function summaryView(summary) {
-  const context = getContextDetails(summary.context, summary.contextDetails);
-  const badge = summary.activeMethod === 'imu' ? 'imu' : summary.activeMethod === 'ai' ? 'ai' : 'neutral';
-  const realAi = summary.runtimeKind === 'mediapipe-web';
-  const realImu = summary.runtimeKind === 'browser-sensors';
-  return `<div class="page-stage session-summary-page"><section class="session-complete"><span class="session-complete__icon material-symbols-rounded" aria-hidden="true">check_circle</span><span class="section-kicker">${realAi ? 'MediaPipe Web Session' : realImu ? '手機姿態概念驗證' : 'Demo Session'}</span><h1>本次偵測完成</h1><p>${realAi ? `以下為 ${summary.modelVariant || 'full'} 模型在本機產生的姿勢摘要，不作醫療診斷。` : realImu ? '以下為手機相對 Pitch 低頭概念驗證摘要；手機姿態不等同已完成的頭部穿戴量測。' : `以下為「${context.label}」概念操作流程產生的 Mock 摘要，不代表真實感測結果。`}</p><span class="mode-badge mode-badge--${badge}">${modeLabels[summary.mode] || '智慧模式'}</span></section><section class="summary-metric-grid" aria-label="本次偵測摘要"><div><span class="material-symbols-rounded">schedule</span><small>偵測時間</small><strong>${summary.duration}</strong></div><div><span class="material-symbols-rounded">accessibility_new</span><small>良好姿勢</small><strong>${summary.goodPosture}</strong></div><div><span class="material-symbols-rounded">south</span><small>低頭</small><strong>${summary.lookingDown}</strong></div><div><span class="material-symbols-rounded">directions_walk</span><small>行走低頭</small><strong>${summary.walkingDown}</strong></div><div><span class="material-symbols-rounded">notifications</span><small>提醒次數</small><strong>${summary.reminders}</strong></div></section><section class="summary-insight"><span class="icon-tile icon-tile--ai"><span class="material-symbols-rounded">auto_awesome</span></span><div><span class="demo-tag">${realAi ? '本機 AI 小結' : realImu ? '本機感測小結' : 'Mock AI 小結'}</span><h2>本次${realAi || realImu ? '偵測' : '示範'}重點</h2><p>${summary.insight}</p></div></section><div class="summary-actions"><a class="button" href="#/statistics">查看完整分析</a><button class="button button--secondary" type="button" data-action="summary-home">返回首頁</button></div></div>`;
+function summaryView(summary, saveStatus) {
+  const badge = summary.finalMethod || 'neutral';
+  const methodLabel = (method) => method === 'ai' ? 'MediaPipe Web AI' : '手機 IMU 概念驗證';
+  const methods = summary.methodsUsed.map(methodLabel).join('、');
+  const finalMethod = summary.finalMethod ? methodLabel(summary.finalMethod) : '結束時未監測';
+  const note = summary.methodsUsed.includes('imu')
+    ? '手機相對姿態是本機概念驗證，不等於頭部穿戴式量測；本摘要不作醫療診斷。'
+    : 'MediaPipe Web 在本機進行姿勢辨識；本摘要不作醫療診斷。';
+  return `<div class="page-stage session-summary-page"><section class="session-complete"><span class="session-complete__icon material-symbols-rounded" aria-hidden="true">check_circle</span><span class="section-kicker">本機監測工作階段</span><h1>本次偵測完成</h1><p>${note}</p><span class="mode-badge mode-badge--${badge}">${modeLabels[summary.selectedMode]}</span></section>${saveStatus === 'failed' ? '<p class="planning-banner" role="alert">監測已結束，但此筆紀錄未能儲存於本機。</p>' : ''}<section class="summary-metric-grid" aria-label="本次偵測摘要"><div><span class="material-symbols-rounded">schedule</span><small>監測工作階段時間（含啟動與校正）</small><strong>${formatDuration(summary.activeDurationMs)}</strong></div><div><span class="material-symbols-rounded">sensors</span><small>實際取得觀測的方式</small><strong>${methods}</strong></div><div><span class="material-symbols-rounded">flag</span><small>結束時方式</small><strong>${finalMethod}</strong></div></section><section class="summary-insight"><span class="icon-tile icon-tile--ai"><span class="material-symbols-rounded">info</span></span><div><span class="demo-tag">${saveStatus === 'saved' ? '已儲存於此瀏覽器' : '僅本次顯示'}</span><h2>資料範圍</h2><p>此處僅呈現可代表整次工作階段的資料；姿勢事件與提醒的歷史總數尚未建立跨重新校正與模式切換的累計，因此不列為本次總計。</p></div></section><div class="summary-actions"><a class="button" href="#/statistics">查看統計示意</a><button class="button button--secondary" type="button" data-action="summary-home">返回首頁</button></div></div>`;
 }
 
 function overviewView(contextSnapshot, manualOpen, setupOpen) {
@@ -480,7 +483,7 @@ export function renderAssessmentPage(container) {
     container.innerHTML = currentSession.status !== 'idle'
       ? activeView(currentSession)
       : currentSession.lastSummary
-        ? summaryView(currentSession.lastSummary)
+        ? summaryView(currentSession.lastSummary, currentSession.lastSaveStatus)
         : overviewView(currentContext, manualOpen, setupOpen);
     refreshWalkingDebugMount?.();
     renderedViewKey = assessmentViewKey(currentSession, { manualOpen, setupOpen });
