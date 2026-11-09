@@ -1,54 +1,54 @@
 import { getContextDetails, subscribeMonitoringSession } from '../state/monitoring-session.js';
+import { completedSessionHistory, COMPLETED_SESSION_STORAGE_KEY } from '../state/completed-session-history.js';
 import { navigateToAssessment } from '../utils/assessment-navigation.js';
+
+const modeLabels = { smart: '智慧模式', ai: 'AI 姿勢辨識', imu: '手機 IMU 概念驗證' };
+const methodLabels = { ai: 'AI', imu: '手機 IMU' };
+
+export function getHomeHistorySummary(records, now = new Date()) {
+  const today = records.filter(({ endedAt }) => {
+    const date = new Date(endedAt);
+    return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate();
+  });
+  return {
+    total: records.length,
+    todayCount: today.length,
+    todayDurationMs: today.reduce((sum, record) => sum + record.activeDurationMs, 0),
+    latest: records.reduce((latest, record) => !latest || record.endedAt > latest.endedAt ? record : latest, null),
+  };
+}
+
+export function formatHomeDuration(ms) {
+  const seconds = Math.floor(Math.max(0, ms) / 1000);
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remaining = seconds % 60;
+  return [hours ? `${hours} 小時` : '', minutes ? `${minutes} 分` : '', remaining || (!hours && !minutes) ? `${remaining} 秒` : ''].filter(Boolean).join(' ');
+}
+
+export function renderHomeToday(summary) {
+  if (!summary.total) return `<div class="score-panel__heading"><div><span class="section-kicker">今日偵測</span><h2>尚無偵測紀錄</h2></div></div><div class="score-panel__body"><div class="score-panel__summary"><p>完成一次 AI 或手機 IMU 偵測後，首頁會顯示近期使用摘要。</p><a class="text-link" href="#/assessment">前往偵測<span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span></a></div></div>`;
+  return `<div class="score-panel__heading"><div><span class="section-kicker">本機使用摘要</span><h2>今日偵測</h2></div></div><div class="score-panel__body"><div class="score-panel__summary"><dl class="score-mini-metrics"><div><dt>今日完成偵測</dt><dd>${summary.todayCount} 次</dd></div><div><dt>今日偵測時間</dt><dd>${formatHomeDuration(summary.todayDurationMs)}</dd></div></dl><p>偵測時間包含啟動與校正時間。</p><a class="text-link" href="#/records">查看偵測紀錄<span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span></a></div></div>`;
+}
+
+export function renderHomeRecent(latest) {
+  if (!latest) return '<p>尚無偵測紀錄，完成偵測後即可在此查看。</p>';
+  const date = new Date(latest.endedAt);
+  const when = Number.isFinite(date.getTime()) ? date.toLocaleString('zh-TW', { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : '時間無法顯示';
+  const methods = latest.methodsUsed.map((method) => methodLabels[method]).join(' ＋ ');
+  return `<article class="summary-row"><div class="summary-row__main"><span class="mode-badge">${modeLabels[latest.selectedMode]}</span><h3>${when} 完成</h3><p>實際使用：${methods}・偵測時長：${formatHomeDuration(latest.activeDurationMs)}</p></div></article>`;
+}
 
 export function renderHomePage(container) {
   container.innerHTML = `
     <div class="page-stage home-page">
       <section class="home-intro" aria-labelledby="home-title">
-        <div>
-          <span class="product-kicker">情境智慧姿勢管理</span>
-          <h1 id="home-title">早安，小安</h1>
-          <p>從坐姿健康到行走安全，依照情境選擇合適的偵測方式。</p>
-        </div>
-        <span class="demo-label"><span class="material-symbols-rounded" aria-hidden="true">science</span>8 月 11 日・Mock Data</span>
+        <div><span class="product-kicker">情境智慧姿勢管理</span><h1 id="home-title">歡迎回來</h1><p>從坐姿健康到行走安全，依照情境選擇合適的偵測方式。</p></div>
+        <span class="demo-label"><span class="material-symbols-rounded" aria-hidden="true">phonelink_lock</span>紀錄儲存於本機</span>
       </section>
-
-      <section class="home-overview" aria-label="今日整體狀況">
-        <article class="score-panel card">
-          <div class="score-panel__heading">
-            <div>
-              <span class="section-kicker">今日整體狀況</span>
-              <h2>姿勢健康穩定</h2>
-            </div>
-            <span class="status-chip status-chip--healthy"><span class="material-symbols-rounded" aria-hidden="true">trending_up</span>較昨日 +4</span>
-          </div>
-          <div class="score-panel__body">
-            <div class="score-gauge" aria-label="今日姿勢分數 86 分">
-              <strong class="score-enter">86</strong>
-              <span>今日姿勢分數</span>
-            </div>
-            <div class="score-panel__summary">
-              <p>良好姿勢比例維持在 82%，下午閱讀時段可多留意頭部前傾。</p>
-              <dl class="score-mini-metrics">
-                <div><dt>今日提醒</dt><dd>5 次</dd></div>
-                <div><dt>良好姿勢</dt><dd>82%</dd></div>
-              </dl>
-              <a class="text-link" href="#/statistics">查看完整分析<span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span></a>
-            </div>
-          </div>
-        </article>
-
+      <section class="home-overview" aria-label="偵測摘要">
+        <article class="score-panel card" data-home-today></article>
         <div class="today-status-list">
-          <article class="status-row status-row--healthy">
-            <span class="status-row__icon material-symbols-rounded" aria-hidden="true">favorite</span>
-            <div><span>姿勢健康</span><strong>狀態良好</strong><small>今日未出現長時間趴伏</small></div>
-            <span class="status-dot" aria-hidden="true"></span>
-          </article>
-          <article class="status-row status-row--healthy">
-            <span class="status-row__icon material-symbols-rounded" aria-hidden="true">directions_walk</span>
-            <div><span>行走安全</span><strong>目前安全</strong><small>Mock 狀態・非即時資料</small></div>
-            <span class="status-dot" aria-hidden="true"></span>
-          </article>
           <article class="status-row status-row--brand" data-home-monitoring-status>
             <span class="status-row__icon material-symbols-rounded" aria-hidden="true">sensors</span>
             <div><span>目前偵測狀態</span><strong data-home-monitoring-title>目前未監測</strong><small data-home-monitoring-copy>可選擇智慧、AI 或手機 IMU 監測</small></div>
@@ -56,55 +56,36 @@ export function renderHomePage(container) {
           </article>
         </div>
       </section>
-
-      <section class="home-content-grid">
-        <article class="advice-panel" aria-labelledby="today-advice-title">
-          <div class="section-title-row">
-            <div><span class="section-kicker">Mock 個人化分析</span><h2 id="today-advice-title">今日 AI 建議</h2></div>
-            <span class="icon-tile icon-tile--ai"><span class="material-symbols-rounded" aria-hidden="true">auto_awesome</span></span>
-          </div>
-          <ol class="advice-list">
-            <li><span>01</span><p><strong>閱讀時段安排短休息</strong>下午 3–4 點較容易低頭，建議每 30 分鐘伸展肩頸。</p></li>
-            <li><span>02</span><p><strong>優先維持穩定姿勢</strong>短暫動作不需緊張，持續異常時再調整坐姿。</p></li>
-          </ol>
-        </article>
-
-        <section class="quick-start-panel" aria-labelledby="quick-start-title">
-          <div class="section-title-row">
-            <div><span class="section-kicker">選擇偵測方式</span><h2 id="quick-start-title">快速開始</h2></div>
-          </div>
-          <div class="quick-mode-list">
-            <a class="quick-mode quick-mode--smart interactive-card" href="#/assessment" data-quick-start="smart">
-              <span class="quick-mode__icon material-symbols-rounded" aria-hidden="true">auto_awesome</span>
-              <span><strong>智慧模式</strong><small>依情境與可用裝置提供建議</small></span>
-              <span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span>
-            </a>
-            <a class="quick-mode quick-mode--ai interactive-card" href="#/assessment" data-quick-start="ai">
-              <span class="quick-mode__icon material-symbols-rounded" aria-hidden="true">videocam</span>
-              <span><strong>AI 坐姿辨識</strong><small>適合有可用攝影機的環境</small></span>
-              <span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span>
-            </a>
-            <a class="quick-mode quick-mode--imu interactive-card" href="#/assessment" data-quick-start="imu">
-              <span class="quick-mode__icon material-symbols-rounded" aria-hidden="true">sensors</span>
-              <span><strong>IMU 姿態感測</strong><small>手機姿態與行走安全概念驗證</small></span>
-              <span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span>
-            </a>
-          </div>
-        </section>
-      </section>
-
       <section class="recent-summary" aria-labelledby="recent-summary-title">
-        <div class="section-title-row section-title-row--line">
-          <div><span class="section-kicker">最近一次紀錄</span><h2 id="recent-summary-title">健康摘要</h2></div>
-          <a class="text-link" href="#/records">查看全部<span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span></a>
+        <div class="section-title-row section-title-row--line"><div><span class="section-kicker">本機紀錄</span><h2 id="recent-summary-title">最近一次偵測</h2></div><a class="text-link" href="#/records">查看全部<span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span></a></div>
+        <div data-home-recent></div>
+      </section>
+      <section class="quick-start-panel recent-summary" aria-labelledby="quick-start-title">
+        <div class="section-title-row"><div><span class="section-kicker">選擇偵測方式</span><h2 id="quick-start-title">快速開始</h2></div></div>
+        <div class="quick-mode-list">
+          <a class="quick-mode quick-mode--smart interactive-card" href="#/assessment" data-quick-start="smart"><span class="quick-mode__icon material-symbols-rounded" aria-hidden="true">auto_awesome</span><span><strong>智慧模式</strong><small>依情境與可用裝置提供建議</small></span><span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span></a>
+          <a class="quick-mode quick-mode--ai interactive-card" href="#/assessment" data-quick-start="ai"><span class="quick-mode__icon material-symbols-rounded" aria-hidden="true">videocam</span><span><strong>AI 坐姿辨識</strong><small>適合有可用攝影機的環境</small></span><span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span></a>
+          <a class="quick-mode quick-mode--imu interactive-card" href="#/assessment" data-quick-start="imu"><span class="quick-mode__icon material-symbols-rounded" aria-hidden="true">sensors</span><span><strong>IMU 姿態感測</strong><small>手機姿態與行走安全概念驗證</small></span><span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span></a>
         </div>
-        <article class="summary-row">
-          <div class="summary-date"><strong>10</strong><span>8 月</span></div>
-          <div class="summary-row__main"><span class="mode-badge mode-badge--ai">AI 坐姿辨識</span><h3>使用電腦・2 小時 15 分</h3><p>整體表現良好，下午時段有 3 次持續低頭提醒。</p></div>
-          <dl class="summary-row__metrics"><div><dt>姿勢分數</dt><dd>84</dd></div><div><dt>良好姿勢</dt><dd>79%</dd></div><div><dt>提醒</dt><dd>7 次</dd></div></dl>
-        </article>
       </section>
     </div>`;
+
+  let lastHistorySignature = '';
+  const updateHistory = () => {
+    const records = completedSessionHistory.getHistory();
+    const now = new Date();
+    const signature = JSON.stringify([now.getFullYear(), now.getMonth(), now.getDate(), records]);
+    if (signature === lastHistorySignature) return;
+    lastHistorySignature = signature;
+    const summary = getHomeHistorySummary(records, now);
+    const today = container.querySelector('[data-home-today]');
+    const recent = container.querySelector('[data-home-recent]');
+    if (today) today.innerHTML = renderHomeToday(summary);
+    if (recent) recent.innerHTML = renderHomeRecent(summary.latest);
+  };
+  const onStorage = (event) => { if (!event.key || event.key === COMPLETED_SESSION_STORAGE_KEY) updateHistory(); };
+  window.addEventListener?.('storage', onStorage);
+  updateHistory();
 
   const onQuickStart = (event) => {
     const trigger = event.target.closest('[data-quick-start]');
@@ -114,6 +95,7 @@ export function renderHomePage(container) {
   };
   container.addEventListener('click', onQuickStart);
   const unsubscribe = subscribeMonitoringSession((session) => {
+    updateHistory();
     const row = container.querySelector('[data-home-monitoring-status]');
     if (!row) return;
     const title = row.querySelector('[data-home-monitoring-title]');
@@ -142,5 +124,5 @@ export function renderHomePage(container) {
     else if (session.riskLevel === 'awareness') row.classList.add('status-row--awareness');
     else row.classList.add('status-row--healthy');
   });
-  return () => { unsubscribe(); container.removeEventListener('click', onQuickStart); };
+  return () => { unsubscribe(); window.removeEventListener?.('storage', onStorage); container.removeEventListener('click', onQuickStart); };
 }
