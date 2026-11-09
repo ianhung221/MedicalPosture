@@ -574,6 +574,21 @@
 .record-summary strong { display: block; color: var(--ink); font-size: .94rem; }
 .records-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: .75rem; }
 .records-count { color: var(--muted); font-size: .68rem; }
+.records-toolbar [data-clear-records][hidden] { display: none; }
+.session-records { display: grid; gap: .7rem; }
+.session-record { display: grid; grid-template-columns: 1.1fr 1fr 1.2fr 1fr; gap: 1rem; padding: 1rem 1.1rem; border: 1px solid var(--border); border-radius: 14px; background: #fff; }
+.session-record > div { display: grid; align-content: start; gap: .3rem; min-width: 0; }
+.session-record strong { color: var(--ink); font-size: .78rem; overflow-wrap: anywhere; }
+.session-record small, .session-record__date span { color: var(--muted); font-size: .68rem; }
+.records-empty { padding: 3rem 1.2rem; text-align: center; border: 1px solid var(--border); border-radius: 14px; background: #fff; }
+.records-empty > .material-symbols-rounded { color: var(--brand); font-size: 2rem; }
+.records-empty h2 { margin: .7rem 0 .4rem; font-size: 1.05rem; }
+.records-empty p { margin: 0 0 1rem; color: var(--muted); }
+.records-error { color: var(--red); }
+@media (max-width: 700px) {
+  .session-record { grid-template-columns: 1fr 1fr; gap: .9rem; }
+  .session-record__date { grid-column: 1 / -1; padding-bottom: .65rem; border-bottom: 1px solid var(--border); }
+}
 .record-table { border: 1px solid var(--border); border-radius: var(--radius); background: #fff; overflow: hidden; }
 .record-table__head,
 .record-event {

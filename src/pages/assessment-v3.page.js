@@ -305,7 +305,7 @@ export function updateAssessmentAiUi(container, session) {
   setText(container, '[data-ai-live-label]', live ? 'LIVE・本機辨識' : '等待啟動');
   setText(container, '[data-ai-connection]', runtimeLabels[runtime.status] || '等待啟動');
   setText(container, '[data-ai-runtime-chip]', live ? '本機 AI' : runtime.status === 'error' ? '啟動失敗' : '準備中');
-  setText(container, '[data-ai-posture]', isPendingPostureObservation(session) ? '姿勢觀察中' : postureLabels[runtime.postureState] || postureLabels.UNKNOWN);
+  setText(container, '[data-ai-posture]', runtime.status === 'loading' ? '正在準備 AI，首次使用可能較久' : isPendingPostureObservation(session) ? '姿勢觀察中' : postureLabels[runtime.postureState] || postureLabels.UNKNOWN);
   setText(container, '[data-ai-duration]', formatDuration(runtime.postureDurationMs));
   setText(container, '[data-ai-monitoring-time]', formatDuration(session.activeDurationMs));
   setText(container, '[data-ai-good-time]', formatDuration(runtime.goodDurationMs));

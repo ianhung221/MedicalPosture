@@ -11,6 +11,20 @@ import { getPlatformSettings } from '../state/platform-settings.js';
 
 import { createReminderPolicy, postureObservation } from '../posture/reminder-policy.js';
 
+// Opt in in DevTools before starting AI: window.__POSTURE_AI_COLD_START_DEBUG__ = true
+export function createAiStartupTrace({ enabled = false, now = () => globalThis.performance.now(), consoleRef = globalThis.console } = {}) {
+  const startedAt = enabled ? now() : 0;
+  let previousAt = startedAt;
+  const seen = new Set();
+  return (stage) => {
+    if (!enabled || seen.has(stage)) return;
+    seen.add(stage);
+    const timestamp = now();
+    try { consoleRef?.info?.(`[AI Cold Start] ${stage}: +${((timestamp - previousAt) / 1000).toFixed(2)}s (total ${((timestamp - startedAt) / 1000).toFixed(2)}s)`); } catch { /* Diagnostics must not interrupt monitoring. */ }
+    previousAt = timestamp;
+  };
+}
+
 export function createAiMonitoringEngine({
   policy = createReminderPolicy(), camera = createCameraController(), runtime = createPoseRuntime(), pipeline = createPosePipeline(), meter = createPerformanceMeter(),
   requestFrame = globalThis.requestAnimationFrame?.bind(globalThis), cancelFrame = globalThis.cancelAnimationFrame?.bind(globalThis),
@@ -27,6 +41,7 @@ export function createAiMonitoringEngine({
   let engineState = 'idle'; let latestResult = null; let latestLandmarks = null; let overlayVersion = 0; let renderedOverlayVersion = -1;
   let schedulerCallbackCount = 0; let renderCallbackCount = 0; let skippedFrames = 0; let droppedInFlightFrames = 0;
   let pipelineProcessCount = 0; let telemetryUpdateCount = 0;
+  let traceStartup = () => {};
   const inferenceIntervalMs = 100;
 
   const updateSession = (result, timestamp, force = false) => {
@@ -58,12 +73,16 @@ export function createAiMonitoringEngine({
     if (timestamp - lastInferenceAt < inferenceIntervalMs) { skippedFrames += 1; return; }
     inFlight = true; lastInferenceAt = timestamp; lastVideoTime = inferenceVideo.currentTime; meter.start(timestamp);
     try {
+      traceStartup('T10 first detectForVideo call');
       const inferenceStarted = now(); const detection = runtime.detect(inferenceVideo, timestamp); const inferenceEnded = now();
+      traceStartup('T11 first inference result');
       meter.record(inferenceEnded - inferenceStarted, inferenceEnded);
       const landmarks = detection?.landmarks?.[0] || null;
+      if (landmarks?.length) traceStartup('T12 first non-empty landmarks');
       latestLandmarks = landmarks; overlayVersion += 1;
       if (renderImmediately && displayVideo) { drawPoseOverlay(canvas, displayVideo, landmarks, runtime.getConnections()); renderedOverlayVersion = overlayVersion; }
       const result = pipeline.process(landmarks, timestamp);
+      if (result?.calibration?.validFrames > 0) traceStartup('T13 first valid calibration sample');
       result.posture = policy.update(postureObservation('ai', result.stableState, timestamp));
       result.tracker = policy.getTrackerSnapshot();
       pipelineProcessCount += 1; latestResult = result; engineState = result?.calibration?.active ? 'calibrating' : 'monitoring'; updateSession(result, timestamp);
@@ -140,6 +159,8 @@ export function createAiMonitoringEngine({
   const api = {
     configure({ privacyPause } = {}) { onPrivacyPause = privacyPause || null; },
     async start({ video: nextVideo, canvas: nextCanvas, requestedModel = DEFAULT_MODEL_VARIANT } = {}) {
+      traceStartup = createAiStartupTrace({ enabled: globalThis.__POSTURE_AI_COLD_START_DEBUG__ === true, now });
+      traceStartup('T0 AI start');
       if (!requestFrame || !cancelFrame) throw new Error('此瀏覽器缺少動畫排程 API');
       if (!setIntervalFn || !clearIntervalFn) throw new Error('此瀏覽器缺少 AI 計時排程 API');
       if (running) api.pause({ reason: 'restart' });
@@ -153,13 +174,14 @@ export function createAiMonitoringEngine({
       sessionUpdater({ status: 'loading', runtimeKind: 'pending', modelVariant, error: null, postureRuntime: null });
       let cameraStarted = false;
       try {
-        await camera.start(inferenceVideo);
+        await camera.start(inferenceVideo, undefined, traceStartup);
         cameraStarted = true;
         if (displayVideo) await camera.attach(displayVideo);
-        await runtime.initialize({ modelVariant });
+        await runtime.initialize({ modelVariant, onStage: traceStartup });
         running = true; engineState = 'calibrating'; documentRef?.addEventListener?.('visibilitychange', handleVisibility);
         sessionUpdater({ status: 'calibrating', runtimeKind: 'mediapipe-web', modelVariant, calibration: pipeline.getSnapshot().calibration, error: null });
         timerId = setIntervalFn(inferenceTick, inferenceIntervalMs);
+        traceStartup('T9 inference scheduler start');
         frameId = requestFrame(renderLoop);
         diagnostics.start(diagnosticSnapshot);
         return true;

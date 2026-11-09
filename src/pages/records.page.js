@@ -1,109 +1,45 @@
-import { getContextDetails, subscribeMonitoringSession } from '../state/monitoring-session.js';
+import { completedSessionHistory } from '../state/completed-session-history.js';
 
-export function renderRecordsPage(container) {
-  const records = [
-    { date: '8 月 11 日', time: '19:42', mode: 'AI', context: '使用電腦', event: '持續低頭', duration: '18 秒', reminded: '是', category: 'ai', tone: 'warning' },
-    { date: '8 月 11 日', time: '17:36', mode: 'IMU', context: '通勤／行走', event: '行走中持續低頭', duration: '12 秒', reminded: '是', category: 'safety', tone: 'danger' },
-    { date: '8 月 11 日', time: '15:18', mode: 'AI', context: '閱讀', event: '手靠近臉', duration: '9 秒', reminded: '否', category: 'ai', tone: 'neutral' },
-    { date: '8 月 10 日', time: '20:06', mode: 'AI', context: '使用電腦', event: '趴伏／上身下沉', duration: '21 秒', reminded: '是', category: 'ai', tone: 'warning' },
-    { date: '8 月 10 日', time: '17:28', mode: 'IMU', context: '車站移動', event: '短暫低頭', duration: '5 秒', reminded: '否', category: 'safety', tone: 'neutral' },
-    { date: '8 月 9 日', time: '14:32', mode: 'IMU', context: '家中休閒', event: '頭部前傾', duration: '16 秒', reminded: '是', category: 'imu', tone: 'warning' },
-    { date: '8 月 9 日', time: '10:15', mode: 'AI', context: '閱讀', event: '良好姿勢', duration: '32 分', reminded: '否', category: 'ai', tone: 'healthy' },
-  ];
+const modeLabels = { smart: '智慧模式', ai: 'AI 姿勢辨識', imu: '手機 IMU 概念驗證' };
+const methodLabels = { ai: 'AI', imu: '手機 IMU' };
 
-  let activeFilter = 'all';
-  let currentSession = null;
+export function formatRecordDuration(ms) {
+  const seconds = Math.floor(Math.max(0, ms) / 1000);
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remaining = seconds % 60;
+  return [hours ? `${hours} 小時` : '', minutes ? `${minutes} 分` : '', remaining || (!hours && !minutes) ? `${remaining} 秒` : ''].filter(Boolean).join(' ');
+}
 
-  container.innerHTML = `
-    <div class="page-stage records-page">
-      <section class="page-heading page-heading--split">
-        <div><span class="product-kicker">健康事件時間軸</span><h1>紀錄</h1><p>以模式與情境回顧姿勢事件、提醒與行走安全紀錄。</p></div>
-        <span class="demo-label"><span class="material-symbols-rounded" aria-hidden="true">history</span>Mock 紀錄</span>
-      </section>
+export function renderRecordList(records) {
+  if (!records.length) return `<div class="records-empty"><span class="material-symbols-rounded" aria-hidden="true">history</span><h2>尚無偵測紀錄</h2><p>完成一次 AI 或手機 IMU 偵測後，紀錄會顯示在這裡。</p><a class="button" href="#/assessment">前往偵測</a></div>`;
+  return records.map((record) => {
+    const started = new Date(record.startedAt);
+    const date = Number.isFinite(started.getTime()) ? started.toLocaleDateString('zh-TW', { year: 'numeric', month: 'long', day: 'numeric' }) : '日期無法顯示';
+    const time = Number.isFinite(started.getTime()) ? started.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false }) : '—';
+    const methods = record.methodsUsed.map((method) => methodLabels[method]).join(' ＋ ');
+    return `<article class="session-record"><div class="session-record__date"><strong>${date}</strong><span>${time} 開始</span></div><div><small>本次偵測時長</small><strong>${formatRecordDuration(record.activeDurationMs)}</strong></div><div><small>選擇模式</small><strong>${modeLabels[record.selectedMode]}</strong></div><div><small>實際使用方式</small><strong>${methods}</strong></div></article>`;
+  }).join('');
+}
 
-      <section class="record-summary" aria-label="紀錄摘要">
-        <div><span class="material-symbols-rounded" aria-hidden="true">event_note</span><p>本週事件<strong>36</strong></p></div>
-        <div><span class="material-symbols-rounded" aria-hidden="true">notifications_active</span><p>已提醒<strong>11</strong></p></div>
-        <div><span class="material-symbols-rounded" aria-hidden="true">health_and_safety</span><p>安全事件<strong>4</strong></p></div>
-      </section>
+export function renderRecordsPage(container, { history = completedSessionHistory, confirmClear = (message) => globalThis.confirm(message) } = {}) {
+  container.innerHTML = `<div class="page-stage records-page"><section class="page-heading page-heading--split"><div><span class="product-kicker">本機健康管理</span><h1>紀錄</h1><p>回顧儲存在此瀏覽器的偵測工作階段。</p></div><span class="demo-label"><span class="material-symbols-rounded" aria-hidden="true">phonelink_lock</span>僅儲存於本機</span></section><div class="records-toolbar"><span class="records-count" data-record-count></span><button class="button button--secondary" type="button" data-clear-records>清除紀錄</button></div><p class="records-error" data-record-error role="alert" hidden></p><section class="session-records" aria-label="已完成的偵測紀錄" data-record-list aria-live="polite"></section></div>`;
 
-      <div class="records-toolbar">
-        <div class="filter-tabs" role="tablist" aria-label="紀錄模式篩選">
-          <button class="is-active" type="button" role="tab" aria-selected="true" data-record-filter="all">全部</button>
-          <button type="button" role="tab" aria-selected="false" data-record-filter="ai">AI</button>
-          <button type="button" role="tab" aria-selected="false" data-record-filter="imu">IMU</button>
-          <button type="button" role="tab" aria-selected="false" data-record-filter="safety">安全</button>
-        </div>
-        <span class="records-count" data-record-count></span>
-      </div>
-
-      <section class="record-table" aria-label="每日姿勢與安全事件">
-        <div class="record-table__head" aria-hidden="true"><span>日期／時間</span><span>模式</span><span>情境</span><span>事件</span><span>持續時間</span><span>是否提醒</span></div>
-        <div data-record-list aria-live="polite"></div>
-      </section>
-    </div>`;
-
-  function modeClass(record) {
-    if (record.category === 'safety') return 'mode-badge--danger';
-    if (record.category === 'neutral') return 'mode-badge--neutral';
-    return record.mode === 'AI' ? 'mode-badge--ai' : 'mode-badge--imu';
-  }
-
-  function renderRecords() {
-    const context = currentSession ? getContextDetails(currentSession.context) : null;
-    const liveRecord = currentSession?.status !== 'idle' ? [{
-      date: '目前',
-      time: currentSession.status === 'paused' ? '已暫停' : '進行中',
-      mode: currentSession.activeMethod === 'ai' ? 'AI' : currentSession.activeMethod === 'imu' ? 'IMU' : '智慧',
-      context: context.label,
-      event: currentSession.status === 'paused' ? 'Demo 偵測暫停' : `${context.recommendation}示範`,
-      duration: '即時',
-      reminded: '否',
-      category: currentSession.activeMethod === 'none' ? 'neutral' : currentSession.activeMethod === 'ai' ? 'ai' : currentSession.riskLevel === 'high-risk' ? 'safety' : 'imu',
-      tone: currentSession.riskLevel === 'high-risk' ? 'danger' : currentSession.riskLevel === 'attention' ? 'warning' : currentSession.riskLevel === 'awareness' ? 'awareness' : 'healthy',
-    }] : [];
-    const recordsWithLiveSession = [...liveRecord, ...records];
-    const visibleRecords = recordsWithLiveSession.filter((record) => {
-      if (activeFilter === 'all') return true;
-      if (activeFilter === 'ai') return record.mode === 'AI';
-      if (activeFilter === 'imu') return record.mode === 'IMU';
-      return record.category === 'safety';
-    });
-
-    container.querySelector('[data-record-count]').textContent = `共 ${visibleRecords.length} 筆示意事件`;
-    container.querySelector('[data-record-list]').innerHTML = visibleRecords.map((record) => `
-      <article class="record-event record-event--${record.tone}">
-        <div class="record-event__time"><strong>${record.date}</strong><span>${record.time}</span></div>
-        <div data-label="模式"><span class="mode-badge ${modeClass(record)}">${record.category === 'safety' ? '安全／IMU' : record.mode}</span></div>
-        <div data-label="情境"><strong>${record.context}</strong></div>
-        <div class="record-event__name" data-label="事件"><span class="event-dot" aria-hidden="true"></span><strong>${record.event}</strong></div>
-        <div data-label="持續時間"><span>${record.duration}</span></div>
-        <div data-label="是否提醒"><span class="reminder-state ${record.reminded === '是' ? 'is-reminded' : ''}">${record.reminded}</span></div>
-      </article>`).join('');
-  }
-
+  const render = () => {
+    const records = history.getHistory();
+    container.querySelector('[data-record-count]').textContent = `共 ${records.length} 筆偵測紀錄`;
+    container.querySelector('[data-clear-records]').hidden = records.length === 0;
+    container.querySelector('[data-record-list]').innerHTML = renderRecordList(records);
+  };
   const onClick = (event) => {
-    const button = event.target.closest('[data-record-filter]');
-    if (!button) return;
-
-    activeFilter = button.dataset.recordFilter;
-    container.querySelectorAll('[data-record-filter]').forEach((option) => {
-      const active = option === button;
-      option.classList.toggle('is-active', active);
-      option.setAttribute('aria-selected', String(active));
-    });
-    renderRecords();
+    if (!event.target.closest('[data-clear-records]') || !confirmClear('確定清除此瀏覽器中的所有偵測紀錄？此操作無法復原。')) return;
+    const result = history.clear();
+    const error = container.querySelector('[data-record-error]');
+    error.hidden = result.ok;
+    error.textContent = result.ok ? '' : '無法清除紀錄，請確認瀏覽器儲存空間可用。';
+    render();
   };
-
   container.addEventListener('click', onClick);
-
-  const unsubscribe = subscribeMonitoringSession((session) => {
-    currentSession = session;
-    renderRecords();
-  });
-
-  return () => {
-    unsubscribe();
-    container.removeEventListener('click', onClick);
-  };
+  render();
+  return () => container.removeEventListener('click', onClick);
 }

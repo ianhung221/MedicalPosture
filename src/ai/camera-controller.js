@@ -1,16 +1,18 @@
 export function createCameraController({ mediaDevices = globalThis.navigator?.mediaDevices, secureContext = globalThis.isSecureContext, hostname = globalThis.location?.hostname } = {}) {
   let stream = null;
   return {
-    async start(video, constraints = { video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false }) {
+    async start(video, constraints = { video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false }, onStage = () => {}) {
       if (!video) throw new TypeError('缺少 video element');
       if (!secureContext && !['localhost', '127.0.0.1', '::1'].includes(hostname)) throw Object.assign(new Error('攝影機需要 HTTPS'), { code: 'INSECURE_CONTEXT' });
       if (!mediaDevices?.getUserMedia) throw Object.assign(new Error('此瀏覽器不支援攝影機 API'), { code: 'CAMERA_UNSUPPORTED' });
       this.stop();
       stream = await mediaDevices.getUserMedia(constraints);
+      onStage('T1 getUserMedia resolved');
       video.srcObject = stream;
       video.setAttribute('playsinline', '');
       video.muted = true;
       await video.play();
+      onStage('T2 inference video playable');
       return stream;
     },
     async attach(video) {
