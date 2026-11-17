@@ -2,7 +2,7 @@ import {
   applyPendingMonitoringRecommendation,
   dismissPendingMonitoringRecommendation,
   endMonitoring,
-  getContextDetails,
+  getSessionContextPresentation,
   pauseMonitoring,
   resumeMonitoring,
   subscribeMonitoringSession,
@@ -110,7 +110,7 @@ export function mountMonitoringControls(app) {
     currentSession = session;
     const isActive = session.status !== 'idle';
     const paused = session.status === 'paused';
-    const context = getContextDetails(session.context, session.contextDetails);
+    const context = getSessionContextPresentation(session);
     app.dataset.monitoringStatus = session.status;
     app.dataset.riskLevel = isActive ? session.riskLevel : 'idle';
     chrome.hidden = !isActive;

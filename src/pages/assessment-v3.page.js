@@ -350,7 +350,7 @@ export function updateAssessmentImuUi(container, session) {
         : safety.lowHead ? '行走低頭觀察中' : '行走已確認・目前安全';
   const safetyCopy = session.status === 'paused' ? '安全計時已重設，繼續監測後重新觀察。'
     : !walkingActive ? '確認行走後，系統才會結合目前低頭狀態評估安全提醒。'
-      : safety.phase === 'escalated' ? safety.lastReminderKind === 'repeat' ? '持續符合行走低頭條件，已再次提醒注意前方。' : '持續符合行走低頭條件，請抬頭留意周遭。'
+      : safety.phase === 'escalated' ? '持續偵測到行走中低頭，請注意前方。'
         : safety.phase === 'high-risk' ? '已持續超過 3 秒，請抬頭留意前方環境。'
           : safety.lowHead ? '正在確認行走與低頭是否持續，不會立即警示。' : '目前未同時出現低頭狀態。';
   setText(container, '[data-imu-safety-title]', safetyTitle);

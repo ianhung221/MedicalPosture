@@ -1,4 +1,4 @@
-import { getContextDetails, subscribeMonitoringSession } from '../state/monitoring-session.js';
+import { getSessionContextPresentation, subscribeMonitoringSession } from '../state/monitoring-session.js';
 import { completedSessionHistory, COMPLETED_SESSION_STORAGE_KEY } from '../state/completed-session-history.js';
 import { navigateToAssessment } from '../utils/assessment-navigation.js';
 
@@ -110,7 +110,7 @@ export function renderHomePage(container) {
       return;
     }
 
-    const context = getContextDetails(session.context, session.contextDetails);
+    const context = getSessionContextPresentation(session);
     const aiPending = session.activeMethod === 'ai' && session.aiRuntime?.runtimeKind !== 'mediapipe-web';
     const imuPending = session.activeMethod === 'imu' && session.imuRuntime?.runtimeKind !== 'browser-sensors';
     title.textContent = session.status === 'paused'

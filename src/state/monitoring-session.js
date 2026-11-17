@@ -82,6 +82,13 @@ const CONTEXTS = {
   },
 };
 
+// Presentation only: a manual method selection is not evidence of a context.
+export function getSessionContextPresentation(session) {
+  if (session?.mode === 'ai') return { label: '手動選擇', recommendation: 'AI 姿勢辨識' };
+  if (session?.mode === 'imu') return { label: '手動選擇', recommendation: '手機 IMU' };
+  return getContextDetails(session?.context, session?.contextDetails);
+}
+
 const initialState = () => ({
   status: 'idle',
   mode: null,
