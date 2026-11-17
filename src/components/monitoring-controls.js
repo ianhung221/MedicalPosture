@@ -19,6 +19,13 @@ import { DEFAULT_MODEL_VARIANT } from '../ai/mediapipe-config.js';
 import { imuMonitoringEngine } from '../imu/imu-monitoring-engine.js';
 import { reminderPresentation } from '../posture/reminder-presentation.js';
 import { showMonitoringDetails } from '../utils/assessment-navigation.js';
+import { getPlatformSettings } from '../state/platform-settings.js';
+
+export function redirectPausedResume(session, settings, browser, root) {
+  if (session?.status !== 'paused' || settings.continueMonitoringAcrossRoutes || browser.location.hash === '#/assessment') return false;
+  showMonitoringDetails(session, browser, root);
+  return true;
+}
 
 const modeLabels = { smart: '智慧模式', ai: 'AI 坐姿辨識', imu: 'IMU 姿態感測' };
 const methodLabels = { ai: 'AI', imu: 'IMU', none: '不監測' };
@@ -157,6 +164,7 @@ export function mountMonitoringControls(app) {
     if (action === 'toggle-details') setPanelOpen(panel.hidden);
     if (action === 'toggle-pause') {
       if (currentSession.status === 'paused') {
+        if (redirectPausedResume(currentSession, getPlatformSettings(), window, document)) { setPanelOpen(false); return; }
         resumeMonitoring();
         if (currentSession.activeMethod === 'ai') {
           const video = document.querySelector('[data-ai-video]'); const canvas = document.querySelector('[data-ai-canvas]');
