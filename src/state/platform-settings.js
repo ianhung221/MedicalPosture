@@ -1,13 +1,12 @@
 export const PLATFORM_SETTINGS_STORAGE_KEY = 'posture-care:platform-settings:v1';
 
-const DEFAULTS = Object.freeze({ continueMonitoringAcrossRoutes: true });
+const DEFAULTS = Object.freeze({ continueMonitoringAcrossRoutes: true, defaultMonitoringMode: 'smart' });
+const MODES = new Set(['smart', 'ai', 'imu']);
 
 function readStoredSettings(storage) {
   try {
     const value = JSON.parse(storage?.getItem?.(PLATFORM_SETTINGS_STORAGE_KEY) || 'null');
-    return typeof value?.continueMonitoringAcrossRoutes === 'boolean'
-      ? { continueMonitoringAcrossRoutes: value.continueMonitoringAcrossRoutes }
-      : { ...DEFAULTS };
+    return { continueMonitoringAcrossRoutes: typeof value?.continueMonitoringAcrossRoutes === 'boolean' ? value.continueMonitoringAcrossRoutes : DEFAULTS.continueMonitoringAcrossRoutes, defaultMonitoringMode: MODES.has(value?.defaultMonitoringMode) ? value.defaultMonitoringMode : DEFAULTS.defaultMonitoringMode };
   } catch { return { ...DEFAULTS }; }
 }
 
@@ -26,6 +25,11 @@ export function createPlatformSettings({ storage = defaultStorage() } = {}) {
       if (state.continueMonitoringAcrossRoutes === value) return snapshot();
       state = { ...state, continueMonitoringAcrossRoutes: value }; persist(); return emit();
     },
+    setDefaultMonitoringMode(value) {
+      if (!MODES.has(value)) throw new TypeError('不支援的預設偵測方式');
+      if (state.defaultMonitoringMode === value) return snapshot();
+      state = { ...state, defaultMonitoringMode: value }; persist(); return emit();
+    },
     subscribe(listener) { listeners.add(listener); listener(snapshot()); return () => listeners.delete(listener); },
   };
 }
@@ -33,4 +37,5 @@ export function createPlatformSettings({ storage = defaultStorage() } = {}) {
 export const platformSettings = createPlatformSettings();
 export const getPlatformSettings = () => platformSettings.getSnapshot();
 export const setContinueMonitoringAcrossRoutes = (value) => platformSettings.setContinueMonitoringAcrossRoutes(value);
+export const setDefaultMonitoringMode = (value) => platformSettings.setDefaultMonitoringMode(value);
 export const subscribePlatformSettings = (listener) => platformSettings.subscribe(listener);
