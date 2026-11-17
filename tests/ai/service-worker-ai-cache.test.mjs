@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-test('service worker v42 separates AI and 3D assets from install-critical shell', async () => {
+test('service worker v43 separates AI and 3D assets from install-critical shell', async () => {
   const source = await readFile(new URL('../../service-worker.js', import.meta.url), 'utf8');
-  assert.match(source, /posture-health-shell-v42/); assert.match(source, /posture-ai-assets-v1/); assert.match(source, /posture-3d-assets-v2/);
+  assert.match(source, /posture-health-shell-v43/); assert.match(source, /posture-ai-assets-v1/); assert.match(source, /posture-3d-assets-v2/);
   assert.match(source, /src\/context\/walking-debug\.js/);
   assert.match(source, /src\/imu\/imu-head-anatomy\.js/);
   assert.match(source, /src\/imu\/imu-occlusion-index\.js/);
