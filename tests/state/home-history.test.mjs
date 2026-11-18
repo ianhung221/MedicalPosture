@@ -12,7 +12,7 @@ test('empty and corrupted storage yield an honest empty state', () => {
   const records = createCompletedSessionHistory({ storage }).getHistory();
   const summary = getHomeHistorySummary(records, now);
   assert.equal(summary.total, 0); assert.equal(summary.latest, null);
-  assert.match(renderHomeToday(summary), /尚無偵測紀錄/);
+  assert.match(renderHomeToday(summary), /0 次/); assert.match(renderHomeToday(summary), /0 秒/);
   assert.match(renderHomeRecent(summary.latest), /尚無偵測紀錄/);
   assert.doesNotMatch(renderHomeToday(summary), /姿勢分數|AI 建議|%/);
 });

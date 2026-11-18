@@ -294,3 +294,11 @@ select:focus-visible {
 @media (prefers-reduced-motion: reduce) {
   .monitoring-dock { transition-duration: .01ms; }
 }
+
+/* The default dock sits above both navigation and the phone safe area. */
+.monitoring-chrome { bottom: calc(94px + env(safe-area-inset-bottom, 0px)); }
+@media (max-width: 760px) {
+  .monitoring-chrome, .monitoring-chrome.is-positioned {
+    bottom: calc(84px + env(safe-area-inset-bottom, 0px));
+  }
+}

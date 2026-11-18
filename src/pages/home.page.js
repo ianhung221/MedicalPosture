@@ -27,12 +27,12 @@ export function formatHomeDuration(ms) {
 }
 
 export function renderHomeToday(summary) {
-  if (!summary.total) return `<div class="score-panel__heading"><div><span class="section-kicker">今日偵測</span><h2>尚無偵測紀錄</h2></div></div><div class="score-panel__body"><div class="score-panel__summary"><p>完成一次 AI 或手機 IMU 偵測後，首頁會顯示近期使用摘要。</p><a class="text-link" href="#/assessment">前往偵測<span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span></a></div></div>`;
+  if (!summary.total) return `<div class="score-panel__heading"><div><h2>今日使用</h2></div></div><div class="score-panel__body"><div class="score-panel__summary"><dl class="score-mini-metrics"><div><dt>今日完成偵測</dt><dd>0 次</dd></div><div><dt>今日偵測時間</dt><dd>0 秒</dd></div></dl><p>偵測時間包含啟動與校正時間。</p></div></div>`;
   return `<div class="score-panel__heading"><div><span class="section-kicker">本機使用摘要</span><h2>今日偵測</h2></div></div><div class="score-panel__body"><div class="score-panel__summary"><dl class="score-mini-metrics"><div><dt>今日完成偵測</dt><dd>${summary.todayCount} 次</dd></div><div><dt>今日偵測時間</dt><dd>${formatHomeDuration(summary.todayDurationMs)}</dd></div></dl><p>偵測時間包含啟動與校正時間。</p><a class="text-link" href="#/records">查看偵測紀錄<span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span></a></div></div>`;
 }
 
 export function renderHomeRecent(latest) {
-  if (!latest) return '<p>尚無偵測紀錄，完成偵測後即可在此查看。</p>';
+  if (!latest) return '<div class="home-recent-empty"><span class="material-symbols-rounded" aria-hidden="true">history</span><p>尚無偵測紀錄<br><small>完成偵測後，近期紀錄會顯示在這裡。</small></p></div>';
   const date = new Date(latest.endedAt);
   const when = Number.isFinite(date.getTime()) ? date.toLocaleString('zh-TW', { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : '時間無法顯示';
   const methods = latest.methodsUsed.map((method) => methodLabels[method]).join(' ＋ ');
@@ -43,22 +43,22 @@ export function renderHomePage(container) {
   container.innerHTML = `
     <div class="page-stage home-page">
       <section class="home-intro" aria-labelledby="home-title">
-        <div><span class="product-kicker">情境智慧姿勢管理</span><h1 id="home-title">歡迎回來</h1><p>從坐姿健康到行走安全，依照情境選擇合適的偵測方式。</p></div>
-        <span class="demo-label"><span class="material-symbols-rounded" aria-hidden="true">phonelink_lock</span>紀錄儲存於本機</span>
+        <div><h1 id="home-title">姿勢健康</h1><p>從坐姿健康到行走安全，依照情境選擇合適的偵測方式。</p></div>
       </section>
       <section class="home-overview" aria-label="偵測摘要">
-        <article class="score-panel card" data-home-today></article>
         <div class="today-status-list">
           <article class="status-row status-row--brand" data-home-monitoring-status>
             <span class="status-row__icon material-symbols-rounded" aria-hidden="true">sensors</span>
             <div><span>目前偵測狀態</span><strong data-home-monitoring-title>目前未監測</strong><small data-home-monitoring-copy>可選擇智慧、AI 或手機 IMU 監測</small></div>
-            <a href="#/assessment" aria-label="前往偵測頁"><span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span></a>
+            <a href="#/assessment" aria-label="前往偵測頁"><span>前往偵測</span><span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span></a>
           </article>
         </div>
+        <article class="score-panel" data-home-today></article>
       </section>
       <section class="recent-summary" aria-labelledby="recent-summary-title">
         <div class="section-title-row section-title-row--line"><div><span class="section-kicker">本機紀錄</span><h2 id="recent-summary-title">最近一次偵測</h2></div><a class="text-link" href="#/records">查看全部<span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span></a></div>
         <div data-home-recent></div>
+        <p class="home-storage-note"><span class="material-symbols-rounded" aria-hidden="true">phonelink_lock</span>紀錄儲存於本機</p>
       </section>
       <section class="quick-start-panel recent-summary" aria-labelledby="quick-start-title">
         <div class="section-title-row"><div><span class="section-kicker">選擇偵測方式</span><h2 id="quick-start-title">快速開始</h2></div></div>
@@ -101,6 +101,7 @@ export function renderHomePage(container) {
     const title = row.querySelector('[data-home-monitoring-title]');
     const copy = row.querySelector('[data-home-monitoring-copy]');
     const icon = row.querySelector('.status-row__icon');
+    row.dataset.homeMethod = session.status === 'idle' ? 'idle' : session.activeMethod || 'none';
     row.classList.remove('status-row--healthy', 'status-row--awareness', 'status-row--warning', 'status-row--danger');
 
     if (session.status === 'idle') {
