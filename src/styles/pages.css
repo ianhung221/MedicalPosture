@@ -1600,3 +1600,24 @@
   .live-detection-page:has(.ai-live-visual) .live-layout--media { grid-template-columns: minmax(0, 1fr); }
   .live-detection-page:has(.ai-live-visual) .live-status-panel { order: -1; }
 }
+
+/* Compact shared reminder summary and IMU presentation. */
+.alert-showcase { padding: .8rem 1rem; }
+.alert-showcase .section-title-row h2 { margin: 0; font-size: .95rem; }
+.alert-showcase [data-reminder-status] { font-size: .85rem; }
+.alert-showcase details summary, .imu-technical summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; color: var(--brand-dark); font-weight: 700; font-size: .85rem; }
+.alert-showcase summary:focus-visible, .imu-technical summary:focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; }
+.imu-status-panel { display: flex; flex-direction: column; gap: .65rem; }
+.imu-status-panel .imu-orientation-now, .imu-status-panel .imu-calibration, .imu-status-panel .imu-reading-list, .imu-status-panel .session-controls, .imu-status-panel .imu-walking-safety { margin: 0; }
+.imu-status-panel .imu-orientation-now strong { font-size: 1.2rem; }
+.imu-reading-list--primary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .3rem .8rem; }
+.imu-reading-list--primary div { min-width: 0; }
+.imu-walking-safety[data-phase="idle"] { padding: .55rem .75rem; background: var(--surface-subtle); border-color: var(--border); }
+.imu-technical { border-top: 1px solid var(--border); font-size: .8rem; }
+.imu-technical .connection-row { display: flex; justify-content: space-between; }
+.imu-technical dl { display: flex; gap: .5rem; }.imu-technical dd { margin: 0; }
+@media (max-width: 760px) {
+  .live-detection-page:has(.imu-live-visual) .live-layout--media { grid-template-columns: minmax(0, 1fr); }
+  .live-detection-page:has(.imu-live-visual) .imu-status-panel { order: -1; }
+  .imu-live-visual .imu-head-stage { min-height: 0; aspect-ratio: 1.1 / 1; }
+}
