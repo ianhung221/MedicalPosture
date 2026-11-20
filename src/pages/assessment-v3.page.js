@@ -74,7 +74,7 @@ function contextPresentation(contextSnapshot) {
 function candidateMarkup(view) {
   if (view.recommendation.shouldAutoApply) return `<div class="context-candidate"><span><strong>情境資訊已準備完成</strong><small>按下開始後會直接套用「${view.recommendationLabel}」作為初始模式。</small></span><button class="button" type="button" data-action="start-smart">開始 ${view.recommendationLabel}</button></div>`;
   if (view.candidateLabel) return `<div class="context-candidate"><span><strong>可確認的候選模式：${view.candidateLabel}</strong><small>目前資訊不足以自動套用，但可由你明確確認。</small></span><button class="button" type="button" data-action="confirm-suggestion">確認使用 ${view.candidateLabel}</button></div>`;
-  return '<p class="context-fallback-copy">若裝置不支援或權限遭拒，可展開下方手動模式；不會把未知狀態當成偵測成功。</p>';
+  return '<p class="context-fallback-copy">若裝置不支援或權限遭拒，可直接選擇 AI 或 IMU；不會把未知狀態當成偵測成功。</p>';
 }
 
 function setText(container, selector, value) {
@@ -266,7 +266,7 @@ function activeView(session) {
   if (session.activeMethod === 'none') return `<div class="page-stage live-detection-page">${activeHeader(session)}${session.mode === 'smart' ? decisionFlow(session) : ''}<div data-pending-region>${pendingSuggestion(session)}</div><section id="active-monitoring-details" tabindex="-1" aria-label="目前監測詳情" class="no-monitoring-state no-monitoring-state--large"><span class="material-symbols-rounded" aria-hidden="true">pause_circle</span><div><span class="section-kicker">正常系統狀態</span><h2>目前不監測</h2><p>${context.reason}</p>${sessionControls(session)}</div></section>${strategyCards(session)}</div>`;
   const aiLive = session.activeMethod === 'ai' && session.aiRuntime?.runtimeKind === 'mediapipe-web';
   const imuLive = session.activeMethod === 'imu' && session.imuRuntime?.runtimeKind === 'browser-sensors';
-  const truth = session.activeMethod === 'ai' ? aiLive ? '<strong>MediaPipe Pose Web 已在此工作階段啟動。</strong> 影像與 landmarks 只在裝置記憶體中處理；姿勢提醒不作醫療診斷。' : '<strong>MediaPipe Pose Python 桌面原型是已完成成果。</strong> Web AI 尚待使用者啟動並成功載入，啟動前不冒充即時辨識。' : imuLive ? '<strong>目前為手機內建方向感測器的本機概念驗證。</strong> 相對 Pitch／Roll／Yaw 來自此手機；不代表耳機、智慧帽夾或頭部穿戴式 IMU 已完成。' : '<strong>手機 IMU 概念驗證尚待使用者啟動。</strong> 真實穿戴裝置整合仍是後續規劃，啟動前不顯示假姿態數值。';
+  const truth = session.activeMethod === 'ai' ? aiLive ? '本機即時辨識・影像與姿勢資料僅在裝置端處理。' : '<strong>MediaPipe Pose Python 桌面原型是已完成成果。</strong> Web AI 尚待使用者啟動並成功載入，啟動前不冒充即時辨識。' : imuLive ? '<strong>目前為手機內建方向感測器的本機概念驗證。</strong> 相對 Pitch／Roll／Yaw 來自此手機；不代表耳機、智慧帽夾或頭部穿戴式 IMU 已完成。' : '<strong>手機 IMU 概念驗證尚待使用者啟動。</strong> 真實穿戴裝置整合仍是後續規劃，啟動前不顯示假姿態數值。';
   return `<div class="page-stage live-detection-page">${activeHeader(session)}${session.mode === 'smart' ? decisionFlow(session) : ''}<div data-pending-region>${pendingSuggestion(session)}</div><div class="truth-note truth-note--${session.activeMethod}"><span class="material-symbols-rounded" aria-hidden="true">${session.activeMethod === 'ai' ? 'verified' : 'science'}</span><p data-ai-truth>${truth}</p></div><section id="active-monitoring-details" tabindex="-1" aria-label="目前監測詳情" class="live-layout live-layout--media">${mediaPanel(session.activeMethod, session.status === 'paused', session)}${session.activeMethod === 'ai' ? aiStatusPanel(session) : imuStatusPanel(session)}</section>${strategyCards(session)}</div>`;
 }
 
@@ -279,6 +279,30 @@ function summaryView(summary, saveStatus) {
     ? '手機相對姿態是本機概念驗證，不等於頭部穿戴式量測；本摘要不作醫療診斷。'
     : 'MediaPipe Web 在本機進行姿勢辨識；本摘要不作醫療診斷。';
   return `<div class="page-stage session-summary-page"><section class="session-complete"><span class="session-complete__icon material-symbols-rounded" aria-hidden="true">check_circle</span><span class="section-kicker">本機監測工作階段</span><h1>本次偵測完成</h1><p>${note}</p><span class="mode-badge mode-badge--${badge}">${modeLabels[summary.selectedMode]}</span></section>${saveStatus === 'failed' ? '<p class="planning-banner" role="alert">監測已結束，但此筆紀錄未能儲存於本機。</p>' : ''}<section class="summary-metric-grid" aria-label="本次偵測摘要"><div><span class="material-symbols-rounded">schedule</span><small>監測工作階段時間（含啟動與校正）</small><strong>${formatDuration(summary.activeDurationMs)}</strong></div><div><span class="material-symbols-rounded">sensors</span><small>實際取得觀測的方式</small><strong>${methods}</strong></div><div><span class="material-symbols-rounded">flag</span><small>結束時方式</small><strong>${finalMethod}</strong></div></section><section class="summary-insight"><span class="icon-tile icon-tile--ai"><span class="material-symbols-rounded">info</span></span><div><span class="demo-tag">${saveStatus === 'saved' ? '已儲存於此瀏覽器' : '僅本次顯示'}</span><h2>資料範圍</h2><p>此處僅呈現可代表整次工作階段的資料；姿勢事件與提醒的歷史總數尚未建立跨重新校正與模式切換的累計，因此不列為本次總計。</p></div></section><div class="summary-actions"><a class="button" href="#/statistics">查看統計</a><button class="button button--secondary" type="button" data-action="summary-home">返回首頁</button></div></div>`;
+}
+
+export function directStartOverview(contextSnapshot, setupOpen, defaultMode = 'smart') {
+  const view = contextPresentation(contextSnapshot);
+  const defaultBadge = (mode) => defaultMode === mode ? '<span class="idle-default">你的預設</span>' : '';
+  const camera = capabilityLabels[contextSnapshot.camera.status] || capabilityLabels.unknown;
+  return `<div class="page-stage detection-page idle-detection" data-context-overview>
+    <header class="idle-heading"><h1>開始偵測</h1><p>選擇適合的方式，開始姿勢與行走安全偵測。</p></header>
+    <section aria-labelledby="idle-direct-title"><div class="idle-section-heading"><h2 id="idle-direct-title">直接開始</h2><p>已經知道要使用哪種方式？直接選擇即可開始。</p></div>
+      <div class="idle-direct-grid">
+        <article class="idle-method idle-method--ai"><span class="idle-method__icon material-symbols-rounded" aria-hidden="true">videocam</span><div><h3>AI 姿勢辨識 ${defaultBadge('ai')}</h3><p>使用攝影機分析坐姿</p></div><button class="button button--ai" type="button" data-action="start-ai">開始 AI <span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span></button></article>
+        <article class="idle-method idle-method--imu"><span class="idle-method__icon material-symbols-rounded" aria-hidden="true">smartphone</span><div><h3>手機 IMU ${defaultBadge('imu')}</h3><p>使用手機感測器進行姿態與行走安全概念驗證</p></div><button class="button button--imu" type="button" data-action="start-imu">開始 IMU <span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span></button></article>
+      </div>
+    </section>
+    <section class="idle-smart" data-context-preflight data-tone="${view.tone}" aria-labelledby="idle-smart-title">
+      <div class="idle-smart__heading"><span class="idle-smart__icon material-symbols-rounded" aria-hidden="true">auto_awesome</span><div><h2 id="idle-smart-title">智慧模式 ${defaultBadge('smart')}</h2><p>不知道怎麼選？讓 Posture Care 根據活動與裝置能力協助判斷，可能需要短暫等待。</p></div></div>
+      <div class="idle-recommendation" data-context-result data-tone="${view.tone}"><span class="material-symbols-rounded" data-context-result-icon aria-hidden="true">${view.icon}</span><div><small>目前建議</small><strong data-context-result-recommendation>${view.recommendationLabel}</strong><p data-context-result-reason>${view.recommendation.reason}</p></div></div>
+      <div class="idle-signals" aria-label="裝置狀態"><span>攝影機：<strong data-context-camera-label>${camera}</strong></span><span>動作感測：<strong data-context-motion-label>${view.motionCopy.label}</strong></span><span>活動：<strong data-context-activity-label>${view.activityLabel}</strong></span></div>
+      <div class="idle-smart__actions"><button class="button" type="button" data-action="start-smart" ${view.isProbing ? 'disabled' : ''}>開始智慧偵測 <span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span></button><button class="text-button" type="button" data-action="toggle-context-setup" aria-expanded="${setupOpen}">${setupOpen ? '收合能力設定' : '檢查裝置能力'}</button></div>
+      ${setupOpen ? `<section class="context-permission-panel" aria-label="智慧模式初始化"><div class="context-permission-panel__intro"><span class="material-symbols-rounded" aria-hidden="true">privacy_tip</span><div><strong>由你決定授權時機</strong><p>動作資料只在本機記憶體用於活動分類；攝影機只確認能力並立即關閉影像串流。不會請求 GPS 或 Bluetooth。</p></div></div><div class="context-permission-actions"><button class="button button--secondary" type="button" data-action="request-motion" ${view.isProbing || contextSnapshot.motion.status === 'available' ? 'disabled' : ''}><span data-context-motion-action-label>${contextSnapshot.motion.status === 'available' ? '動作感測已可用' : '啟用動作感測'}</span></button><button class="button button--secondary" type="button" data-action="request-camera" ${view.isProbing || contextSnapshot.camera.status === 'available' ? 'disabled' : ''}><span data-context-camera-action-label>${contextSnapshot.camera.status === 'available' ? '攝影機已確認' : '檢查攝影機'}</span></button><button class="text-button" type="button" data-action="refresh-context">重新檢查</button></div><div data-context-candidate-region>${candidateMarkup(view)}</div></section>` : ''}
+      <details class="idle-details"><summary>裝置與判斷詳細資訊</summary><dl><div><dt>活動信心</dt><dd data-context-activity-detail>${contextSnapshot.activity.stale ? '資料已暫停，等待重新觀察' : `信心：${contextSnapshot.activity.confidence}`}</dd></div><div><dt>攝影機權限</dt><dd data-context-camera-detail>權限：${contextSnapshot.camera.permission}</dd></div><div><dt>動作感測資訊</dt><dd data-context-motion-detail>${view.motionCopy.detail}</dd></div><div><dt>可用能力</dt><dd data-context-result-available>${view.available}</dd></div><div><dt>安全環境</dt><dd data-context-source>${contextSnapshot.secureContext ? '本機即時狀態' : '需要 HTTPS'}</dd></div></dl></details>
+    </section>
+    <section class="idle-walking" aria-labelledby="idle-walking-title"><span class="material-symbols-rounded" aria-hidden="true">shield</span><div><h2 id="idle-walking-title">行走安全</h2><p>使用手機 IMU 時，可結合行走狀態與持續低頭提供畫面安全提醒。此為手機本機概念驗證，不代表已完成穿戴裝置或可防止事故。</p></div></section>
+  </div>`;
 }
 
 function overviewView(contextSnapshot, manualOpen, setupOpen, defaultMode = 'smart') {
@@ -325,7 +349,7 @@ export function updateAssessmentAiUi(container, session) {
   setText(container, '[data-ai-caption]', live ? `MediaPipe Tasks Vision ${runtime.modelVariant || DEFAULT_MODEL_VARIANT}・本機即時姿勢提醒，不作醫療診斷。` : 'Python 桌面原型已完成；啟動成功後此區才會切換為真實 MediaPipe Web 畫面。');
   setText(container, '[data-runtime-header-kicker]', live ? '本機 AI 即時狀態' : 'AI 啟動準備');
   setText(container, '[data-runtime-header-state]', session.status === 'paused' ? '偵測已暫停' : live ? '本機辨識中' : '等待啟動');
-  setText(container, '[data-ai-truth]', live ? 'MediaPipe Pose Web 已在此工作階段啟動。影像與 landmarks 只在裝置記憶體中處理；姿勢提醒不作醫療診斷。' : 'MediaPipe Pose Python 桌面原型是已完成成果。Web AI 尚待使用者啟動並成功載入，啟動前不冒充即時辨識。');
+  setText(container, '[data-ai-truth]', live ? '本機即時辨識・影像與姿勢資料僅在裝置端處理。' : 'MediaPipe Pose Python 桌面原型是已完成成果。Web AI 尚待使用者啟動並成功載入，啟動前不冒充即時辨識。');
   updateReminderUi(container, session);
   const pendingRegion = container.querySelector('[data-pending-region]');
   if (pendingRegion) {
@@ -485,7 +509,7 @@ export function renderAssessmentPage(container) {
       ? activeView(currentSession)
       : currentSession.lastSummary
         ? summaryView(currentSession.lastSummary, currentSession.lastSaveStatus)
-        : overviewView(currentContext, manualOpen, setupOpen, getPlatformSettings().defaultMonitoringMode);
+        : directStartOverview(currentContext, setupOpen, getPlatformSettings().defaultMonitoringMode);
     refreshWalkingDebugMount?.();
     renderedViewKey = assessmentViewKey(currentSession, { manualOpen, setupOpen });
     renderedContextSignature = contextUiSignature(currentContext);

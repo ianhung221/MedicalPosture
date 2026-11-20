@@ -1532,3 +1532,71 @@
   .home-page .quick-mode, .home-page .quick-mode + .quick-mode { min-height: 70px; }
   .home-page .home-recent-empty { justify-content: flex-start; }
 }
+
+/* Detection idle: direct modes first; existing live views remain untouched. */
+.idle-detection { max-width: 1050px; margin-inline: auto; }
+.idle-heading { margin-bottom: 1.5rem; padding-left: 1rem; border-left: 4px solid var(--brand); }
+.idle-heading h1 { margin: 0 0 .3rem; font-size: clamp(1.6rem, 3vw, 2.1rem); }
+.idle-heading p, .idle-section-heading p { margin: 0; color: var(--ink-soft); font-size: .9rem; }
+.idle-section-heading { margin-bottom: .8rem; }
+.idle-section-heading h2, .idle-smart h2, .idle-walking h2 { margin: 0 0 .3rem; font-size: 1.15rem; }
+.idle-direct-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem; }
+.idle-method { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: .85rem; padding: 1rem; border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 5px 18px rgb(31 52 83 / 6%); }
+.idle-method--ai { background: #f0faf7; border-color: var(--ai-border); }
+.idle-method--imu { background: #f6f3ff; border-color: var(--imu-border); }
+.idle-method__icon, .idle-smart__icon { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 15px; flex: none; }
+.idle-method--ai .idle-method__icon { color: var(--ai-dark); background: var(--ai-soft); }
+.idle-method--imu .idle-method__icon { color: var(--imu-dark); background: var(--imu-soft); }
+.idle-method h3 { margin: 0 0 .2rem; font-size: 1rem; }
+.idle-method p, .idle-smart p, .idle-walking p { margin: 0; font-size: .85rem; line-height: 1.6; }
+.idle-method .button, .idle-smart__actions .button { min-height: 44px; white-space: nowrap; }
+.idle-default { display: inline-block; padding: .15rem .45rem; border-radius: 99px; background: var(--brand-soft); color: var(--brand-dark); font-size: .7rem; vertical-align: middle; }
+.idle-smart { margin-top: 1.7rem; padding: 1.3rem; border: 1px solid #d6e5f6; border-radius: 18px; background: #f8fbff; }
+.idle-smart__heading { display: flex; align-items: flex-start; gap: .85rem; }
+.idle-smart__icon { background: var(--brand-soft); color: var(--brand-dark); }
+.idle-recommendation { display: flex; align-items: flex-start; gap: .8rem; margin-top: 1rem; padding: 1rem 0 .2rem; border-top: 1px solid #d6e5f6; }
+.idle-recommendation > .material-symbols-rounded { color: var(--brand); }
+.idle-recommendation small, .idle-recommendation strong { display: block; }
+.idle-recommendation small { color: var(--muted); font-size: .8rem; }
+.idle-recommendation strong { margin: .15rem 0; font-size: 1rem; }
+.idle-signals { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .8rem; }
+.idle-signals span { padding: .35rem .65rem; border-radius: 99px; background: #edf3f9; color: var(--ink-soft); font-size: .78rem; }
+.idle-smart__actions { display: flex; flex-wrap: wrap; gap: .8rem; align-items: center; margin-top: 1rem; }
+.idle-details { margin-top: 1rem; color: var(--ink-soft); font-size: .8rem; }
+.idle-details summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; }
+.idle-details summary:focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; }
+.idle-details dl { display: grid; gap: .4rem; margin: .4rem 0 0; }
+.idle-details dl div { display: flex; flex-wrap: wrap; gap: .5rem; }
+.idle-details dt { font-weight: 700; }.idle-details dd { margin: 0; }
+.idle-walking { display: flex; gap: .8rem; align-items: flex-start; margin-top: 1.5rem; padding: 1rem .2rem; border-top: 1px solid var(--border); }
+.idle-walking > .material-symbols-rounded { color: var(--imu-dark); }
+@media (max-width: 760px) { .idle-direct-grid { grid-template-columns: 1fr; } .idle-smart { padding: 1rem; } }
+@media (max-width: 430px) { .idle-method { grid-template-columns: auto minmax(0, 1fr); } .idle-method .button { grid-column: 2; justify-self: start; } }
+
+/* AI monitoring workspace: visual hierarchy only; sensor and session logic are unchanged. */
+.live-detection-page:has(.ai-live-visual) .truth-note--ai { padding: .4rem .15rem; margin-bottom: .55rem; border: 0; background: transparent; }
+.live-detection-page:has(.ai-live-visual) .truth-note--ai strong { display: inline; }
+.live-detection-page:has(.ai-live-visual) .live-layout--media { grid-template-columns: minmax(0, 1.7fr) minmax(300px, 1fr); }
+.live-detection-page .detection-visual--ai .ai-camera-stage { aspect-ratio: 16 / 9; }
+.live-detection-page .live-status-panel { display: flex; flex-direction: column; gap: .7rem; }
+.live-status-panel .posture-now { order: 0; margin: 0; padding: 1rem; }
+.live-status-panel .posture-now strong { font-size: 1.3rem; }
+.live-status-panel .posture-now small, .live-status-panel .posture-now p { font-size: .8rem; }
+.live-status-panel .ai-calibration { order: 1; margin: 0; }
+.live-status-panel .session-controls { order: 2; margin: 0; }
+.live-status-panel .live-facts { order: 3; }
+.live-status-panel .live-facts::before { content: '目前工作階段即時資訊'; grid-column: 1 / -1; color: var(--ink-soft); font-size: .78rem; font-weight: 700; }
+.live-status-panel .connection-row { order: 4; padding: .5rem 0 0; border-top: 1px solid var(--border); border-bottom: 0; }
+.live-status-panel .ai-performance { order: 5; margin: 0; font-size: .72rem; text-align: left; }
+.live-status-panel .ai-performance::before { content: '技術資訊：'; }
+.live-detection-page:has(.ai-live-visual) .alert-showcase { padding: .8rem 0; border: 0; background: transparent; }
+.live-detection-page:has(.ai-live-visual) .alert-levels { gap: .35rem; }
+.live-detection-page:has(.ai-live-visual) .alert-level { min-height: 0; padding: .55rem; border: 0; border-radius: 8px; background: transparent; box-shadow: none; }
+.live-detection-page:has(.ai-live-visual) .alert-level.is-active { border-left: 3px solid currentColor; }
+.live-detection-page:has(.ai-live-visual) .alert-level--awareness.is-active { background: var(--yellow-soft); }
+.live-detection-page:has(.ai-live-visual) .alert-level--attention.is-active { background: var(--orange-soft); }
+.live-detection-page:has(.ai-live-visual) .alert-level--high-risk.is-active { background: var(--red-soft); }
+@media (max-width: 760px) {
+  .live-detection-page:has(.ai-live-visual) .live-layout--media { grid-template-columns: minmax(0, 1fr); }
+  .live-detection-page:has(.ai-live-visual) .live-status-panel { order: -1; }
+}
