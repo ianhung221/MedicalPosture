@@ -7,7 +7,7 @@ const record = (id, endedAt, mode = 'smart', methods = ['ai', 'imu']) => ({ sche
 function fixture() {
   const store = new Map([['unrelated-setting', 'keep']]);
   const storage = { getItem: (key) => store.get(key) ?? null, setItem: (key, value) => store.set(key, value), removeItem: (key) => store.delete(key) };
-  const elements = Object.fromEntries(['[data-record-count]', '[data-clear-records]', '[data-record-error]', '[data-record-list]'].map((key) => [key, { textContent: '', innerHTML: '', hidden: false }]));
+  const elements = Object.fromEntries(['[data-record-count]', '[data-clear-records]', '[data-record-error]', '[data-record-list]', '[data-record-summary]'].map((key) => [key, { textContent: '', innerHTML: '', hidden: false }]));
   let click;
   const container = { innerHTML: '', querySelector: (selector) => elements[selector], addEventListener: (_type, fn) => { click = fn; }, removeEventListener: () => {} };
   return { store, storage, elements, container, click: () => click({ target: { closest: () => true } }) };
